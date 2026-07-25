@@ -57,11 +57,19 @@ export class Timeline {
     this.el.addEventListener("scroll", () => this.maybeExtend(), { passive: true });
     // idle poll: covers windows too short to scroll (no scrollbar → no
     // scroll events) and webviews that drop scroll-event delivery
-    setInterval(() => this.maybeExtend(), 400);
+    // Both idle timers stand down while the tab is hidden — a backgrounded
+    // reader has no viewport to extend and nobody to show an arrival to,
+    // and on a battery-powered paper screen the wake cost is the whole
+    // cost. Neither loses anything: the next visible tick catches up, and
+    // pollNewer is a tail check, not a subscription.
+    setInterval(() => { if (!document.hidden) this.maybeExtend(); }, 400);
     // A quiet tail check gives the archive a real arrival moment. It runs
     // only while this view is at the live end of an iMessage/SMS thread;
     // reading history is never interrupted or pulled toward the present.
-    setInterval(() => this.pollNewer(), 5000);
+    setInterval(() => { if (!document.hidden) this.pollNewer(); }, 5000);
+    document.addEventListener("visibilitychange", () => {
+      if (!document.hidden) this.maybeExtend();
+    });
 
     this.el.addEventListener("click", (ev) => {
       const rt = ev.target.closest(".reply-to");

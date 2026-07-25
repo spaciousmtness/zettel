@@ -108,12 +108,39 @@ export class ZLayer {
     this.draw();
   }
 
-  /** Point the ink at a conversation and load whatever was written on it. */
-  useStore(chatKey) {
-    this._storeKey = `zettel:ink:${chatKey}`;
-    try {
-      this.strokes = JSON.parse(localStorage.getItem(this._storeKey) || "[]");
-    } catch { this.strokes = []; }
+  /** Point the ink at a conversation and load whatever was written on it.
+   *
+   *  `key` must be the SERVER'S merge key for the thread, never the raw
+   *  identifier. One person is many chat rows — iMessage/SMS plus spelling
+   *  variants of the same number — and the server folds them into one
+   *  thread. Keyed by identifier, the same conversation reached by a
+   *  different spelling opened a blank sheet and the handwriting looked
+   *  lost. Marks (wl-seen-) and bookmarks (wl-bm-) already key by the merge
+   *  key; the sheet was the one thing that didn't.
+   *
+   *  `legacy` is the old identifier-keyed store. Ink written before this
+   *  fix is adopted into the merged key on first open and the dead key is
+   *  cleared — nobody's handwriting is stranded under a spelling. */
+  useStore(key, legacy) {
+    this._storeKey = `zettel:ink:${key}`;
+    const read = (name) => {
+      try { return JSON.parse(localStorage.getItem(name) || "[]"); }
+      catch { return []; }
+    };
+    this.strokes = read(this._storeKey);
+    const legacyKey = legacy && legacy !== key ? `zettel:ink:${legacy}` : null;
+    if (legacyKey) {
+      const stranded = read(legacyKey);
+      if (stranded.length) {
+        // the merged sheet wins on conflict; strokes are additive and a
+        // moment carries its own timestamp, so order does not matter
+        this.strokes = this.strokes.concat(stranded);
+        this.save();
+      }
+      if (stranded.length || localStorage.getItem(legacyKey) !== null) {
+        try { localStorage.removeItem(legacyKey); } catch { /* fine */ }
+      }
+    }
     this.draw();
   }
 

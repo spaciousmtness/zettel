@@ -3,7 +3,7 @@ import { ChronologyRail } from "./chronology.js";
 import { Waveform } from "./waveform.js";
 import { ZLayer } from "./zlayer.js";
 import { MARK_DIALECT, TAPBACK_GLYPHS, markGlyph, armCrossing, armTwoTap,
-         installApiSecurity } from "./shared.js";
+         installApiSecurity, safeHttpUrl } from "./shared.js";
 
 const $ = (id) => document.getElementById(id);
 
@@ -253,6 +253,13 @@ function syncIntelligenceOverlay() {
     zlayer.setCandidates([]);
     zlayer.setReadings([]);
     zlayer.setLift(0);
+    // ...and the pen goes with it. Leaving through this branch skipped
+    // syncPen(), so opening a thread WITH candidates, lifting the sheet,
+    // then switching to a thread WITHOUT any left "✎ write" and "undo"
+    // stranded on the rail — controls for a plane that is no longer there.
+    button.setAttribute("aria-pressed", "false");
+    $("z-count").textContent = "";
+    syncPen();
     return;
   }
   zlayer.setReadings(readings);
@@ -591,7 +598,10 @@ async function openThread(identifier, threads) {
   state.co = co;
   state.summons = summons.summons || [];
   state.candidates = candidates.candidates || [];
-  zlayer.useStore(state.chat);   // the hand that wrote on THIS conversation
+  // the hand that wrote on THIS conversation — keyed by the server's merge
+  // key, like marks and bookmarks, so a second spelling of the same person
+  // opens the same sheet. state.chat is passed as the legacy key to adopt.
+  zlayer.useStore(state.chatKey || state.chat, state.chat);
   state.density = density.days || [];
   refreshPinBadge();
   syncMapData();
@@ -732,7 +742,14 @@ function syncPlayhead() {
   waveform.setPlayhead(ts);
   updateTrackReadout(ts);
 }
-setInterval(syncPlayhead, 350);
+// A backgrounded tab has no playhead to move and nobody watching it move.
+// board.js already guards its poll this way; the reading surfaces did not,
+// so a DC-1 left on the desk kept repainting the rail behind a locked
+// screen. Nothing is missed: the tick resumes on the next visible frame.
+setInterval(() => { if (!document.hidden) syncPlayhead(); }, 350);
+document.addEventListener("visibilitychange", () => {
+  if (!document.hidden) syncPlayhead();   // catch up the moment it returns
+});
 
 function updateTrackReadout(ts) {
   if (!Number.isFinite(ts) || !waveform.days.length) {
@@ -1450,12 +1467,8 @@ function assistActions(actions) {
   wrap.className = "summon-actions";
   for (const a of actions) {
     const glyph = ASSIST_GLYPH[a.kind] || "→";
-    let safeUrl = null;
-    try {
-      const parsed = new URL(a.url);
-      if (["http:", "https:"].includes(parsed.protocol) &&
-          !parsed.username && !parsed.password) safeUrl = parsed;
-    } catch (e) { /* malformed destinations remain visible, never active */ }
+    // malformed or non-http destinations remain visible, never active
+    const safeUrl = safeHttpUrl(a.url);
     if (safeUrl) {
       const b = document.createElement("button");
       b.className = "quiet mono summon-action";
@@ -2237,7 +2250,7 @@ function wrappedBoardLines(data) {
     sum + Number(period.days_talked || 0), 0);
   const number = (value) => Number(value || 0).toLocaleString("en-US");
   return [
-    "WAVELENGTH WRAPPED",
+    "ZETTEL WRAPPED",
     `${firstYear} > ${lastYear}`,
     `${number(a.total)} MESSAGES`,
     `${number(days)} DAYS IN TOUCH`,
@@ -2351,9 +2364,11 @@ function wrappedCardCanvas(data) {
 
   x.strokeStyle = RULE; x.lineWidth = 1;
   x.beginPath(); x.moveTo(120, H - 190); x.lineTo(W - 120, H - 190); x.stroke();
-  // wordmark only — the public address is an open ruling (domain is gated)
+  // wordmark + the public address. This PNG is the ONE artifact built to
+  // leave the machine, so it is the one place the name has to be current —
+  // it shipped carrying the pre-rename wordmark to everyone it was sent to.
   x.fillStyle = FADE; x.font = mono(24);
-  x.fillText("made with wavelength 〰️", W / 2, H - 118);
+  x.fillText("made with zettel · zettel.ink", W / 2, H - 118);
   return c;
 }
 
@@ -2421,7 +2436,7 @@ function downloadWrappedCard(button) {
   const c = wrappedCardCanvas(data);
   const span = [wrappedState.from, wrappedState.to].filter(Boolean)
     .join("_") || "everything";
-  saveWrappedCanvas(c, `wavelength-wrapped-${span}.png`, button, "image saved");
+  saveWrappedCanvas(c, `zettel-wrapped-${span}.png`, button, "image saved");
 }
 
 function downloadWrappedBoard(button) {
@@ -2430,7 +2445,7 @@ function downloadWrappedBoard(button) {
   const c = wrappedBoardCanvas(data);
   const span = [wrappedState.from, wrappedState.to].filter(Boolean)
     .join("_") || "everything";
-  saveWrappedCanvas(c, `wavelength-board-${span}.png`, button, "board saved");
+  saveWrappedCanvas(c, `zettel-board-${span}.png`, button, "board saved");
 }
 
 function emptyAside(body, text) {
@@ -2462,8 +2477,21 @@ function panelRow(item, { tag, urls, marker = false } = {}) {
     const u = document.createElement("span");
     u.className = "urls";
     for (const url of urls) {
+      // a link in this panel came out of a message SOMEONE ELSE sent. The
+      // summons' action buttons have always refused a non-http destination;
+      // this row handed the raw string to a.href and made `javascript:` a
+      // tap away. Same gate, one home (shared.js), so they cannot drift.
+      const safe = safeHttpUrl(url);
+      if (!safe) {
+        // never silently drop it — the record shows what was there, inert
+        const flat = document.createElement("span");
+        flat.className = "mono";
+        flat.textContent = url;
+        u.append(flat, " ");
+        continue;
+      }
       const a = document.createElement("a");
-      a.href = url; a.textContent = url;
+      a.href = safe.href; a.textContent = url;
       a.target = "_blank"; a.rel = "noopener noreferrer";
       a.addEventListener("click", (e) => e.stopPropagation());
       u.append(a, " ");
@@ -2595,7 +2623,7 @@ async function doExport(action) {
       // her ruling (2026-07-08): the handoff is a FILE that carries its
       // own reading instructions — grammar + loop protocol, built
       // server-side beside the renderer — not a paste that hopes
-      downloadMd(`wavelength-handoff-${stem}.md`, data.handoff || md);
+      downloadMd(`zettel-handoff-${stem}.md`, data.handoff || md);
       $("export-note").textContent =
         `downloaded — ${data.count.toLocaleString()} messages. ` +
         "attach the file in Claude; it knows how to be read.";
