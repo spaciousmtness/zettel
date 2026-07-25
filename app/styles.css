@@ -1360,3 +1360,9 @@ body.calm .arrival-card::after { display: none; }
    SPAN, where the candidate's fine dash is a boundary. Nothing here is
    hue-bearing, so it survives grayscale like everything else on the sheet. */
 #z-svg .z-tie { pointer-events: none; }
+
+/* the deck's own put-away — a hand-sized ▾ on the head, because iOS and
+   the DC-1 have no Escape and the controls-row ▾ can sit below the fold */
+#layer-down { min-width: 44px; min-height: 44px; align-self: center;
+  border: 1px solid var(--umber); border-radius: 3px;
+  background: var(--bone); color: var(--ink); }

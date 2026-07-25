@@ -2754,14 +2754,29 @@ async function doExport(action) {
       downloadMd(`zettel-${stem}.md`, md);
       $("export-note").textContent = `downloaded — ${data.count.toLocaleString()} messages`;
     } else if (action === "claude") {
-      // her ruling (2026-07-08): the handoff is a FILE that carries its
-      // own reading instructions — grammar + loop protocol, built
-      // server-side beside the renderer — not a paste that hopes
-      downloadMd(`zettel-handoff-${stem}.md`, data.handoff || md);
-      $("export-note").textContent =
+      // The handoff has to actually ARRIVE. Small transcripts ride the
+      // composer's own ?q= and land already in the box; big ones land on
+      // the clipboard with the new thread open beside them — one paste.
+      // The file download remains only as the fallback when the clipboard
+      // is blocked, because a download that hopes is not a handoff.
+      const handoff = data.header + (data.handoff || data.markdown);
+      const copied = await copyText(handoff);
+      const url = handoff.length < 6000
+        ? "https://claude.ai/new?q=" + encodeURIComponent(handoff)
+        : "https://claude.ai/new";
+      window.open(url, "_blank", "noopener");
+      if (handoff.length < 6000) {
+        $("export-note").textContent =
+          `${data.count.toLocaleString()} messages — waiting in the composer`;
+      } else if (copied) {
+        $("export-note").textContent =
+          `${data.count.toLocaleString()} messages copied — paste (⌘V) into the new thread`;
+      } else {
+        downloadMd(`zettel-handoff-${stem}.md`, data.handoff || md);
+        $("export-note").textContent =
         `downloaded — ${data.count.toLocaleString()} messages. ` +
         "attach the file in Claude; it knows how to be read.";
-      window.open("https://claude.ai/new", "_blank", "noopener");
+      }
     }
   } catch (e) {
     $("export-note").textContent = "that export took a strange turn — try again?";
@@ -3238,6 +3253,21 @@ $("layer-handle").addEventListener("keydown", (e) => {
   }
 });
 $("layer-close").addEventListener("click", closeLayer);
+$("layer-down").addEventListener("click", closeLayer);
+// The deck lowers by HAND, not only by key — iOS and the DC-1 have no
+// Escape, and the ▾ in the controls row can sit below the fold. A drag
+// down on the deck's head is the gesture the sheet itself taught.
+(() => {
+  const head = $("track-head");
+  let y0 = null;
+  head.addEventListener("pointerdown", (e) => { y0 = e.clientY; });
+  head.addEventListener("pointermove", (e) => {
+    if (y0 !== null && e.clientY - y0 > 48) { y0 = null; closeLayer(); }
+  });
+  const end = () => { y0 = null; };
+  head.addEventListener("pointerup", end);
+  head.addEventListener("pointercancel", end);
+})();
 for (const b of document.querySelectorAll(".facet")) {
   b.addEventListener("click", () => openFacet(b.dataset.facet));
 }

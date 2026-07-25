@@ -37,6 +37,9 @@ import sys
 import threading
 import time
 import unicodedata
+
+import contacts as contacts_mod
+import typedstream as ts_mod
 from datetime import datetime, date
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -103,35 +106,15 @@ def humanize(seconds):
 # returns None rather than garbage when it doesn't understand.
 
 def typedstream_text(blob):
-    if not blob:
+    """The recovered original decoder (typedstream.py), plus the one house
+    nicety: U+FFFC attachment placeholders strip, and an attachment-only
+    message reads as no text so the client renders its media instead."""
+    text = ts_mod.extract(blob)
+    if not text:
         return None
-    i = blob.find(b"NSString")
-    if i < 0:
-        i = blob.find(b"NSMutableString")
-    if i < 0:
-        return None
-    j = blob.find(b"+", i)
-    if j < 0 or j - i > 32:
-        return None
-    j += 1
-    if j >= len(blob):
-        return None
-    b0 = blob[j]
-    if b0 == 0x81:                       # two-byte little-endian length
-        ln = int.from_bytes(blob[j + 1:j + 3], "little"); j += 3
-    elif b0 == 0x82:                     # four-byte
-        ln = int.from_bytes(blob[j + 1:j + 5], "little"); j += 5
-    else:                                # single byte
-        ln = b0; j += 1
-    raw = blob[j:j + ln]
-    try:
-        text = raw.decode("utf-8", "replace")
-    except Exception:
-        return None
-    # U+FFFC is the attachment placeholder; an attachment-only message
-    # should read as no text, which the client renders as its media
-    text = text.replace("￼", "").strip()
+    text = text.replace("\ufffc", "").strip()
     return text or None
+
 
 # ---- the archive ------------------------------------------------------------
 # Exactly one connection, mode=ro, guarded by one lock. The vow on the
@@ -252,6 +235,20 @@ class Api:
         self.a = archive
         self.s = store
         self.config = config
+        # names from macOS Contacts, keyed by the RAW identifiers the client
+        # shows; explicit config aliases win over Contacts on collision
+        self.aliases = {}
+        try:
+            book = contacts_mod.load_map()
+            idents = {t["identifier"] for t in archive.threads()}
+            idents.update(v for v in archive.handles.values() if v)
+            for ident in idents:
+                name = book.get(contacts_mod.handle_key(ident))
+                if name:
+                    self.aliases[ident] = name
+        except Exception:
+            pass                     # no Contacts access: raw handles, as before
+        self.aliases.update(config.get("aliases", {}))
 
     # -- paging: mirrors the demo shim's pageOlder/pageNewer exactly, which
     #    mirrors the original db.py. Composite (date, ROWID) row-value
@@ -408,12 +405,12 @@ class Api:
         return {
             "db": "ok", "messages": n, "csrf_token": CSRF,
             "summon_available": False, "orphaned_families": [],
-            "config": {"aliases": self.config.get("aliases", {}),
+            "config": {"aliases": self.aliases,
                        "default_chat": self.config.get("default_chat")},
         }
 
     def chats(self, sp):
-        aliases = self.config.get("aliases", {})
+        aliases = self.aliases
         threads = []
         for t in self.a.threads():
             if t["count"] == 0:
@@ -818,7 +815,7 @@ class Api:
         pins = sp.get("pins", [None])[0] == "1"
         emoji = sp.get("emoji", [None])[0]
         rows = self._page(cids, "older", None, 100000)
-        aliases = self.config.get("aliases", {})
+        aliases = self.aliases
         title = (thread or {}).get("display_name") or \
             aliases.get((thread or {}).get("identifier", ""), "") or \
             (thread or {}).get("identifier", "the thread")
@@ -1088,7 +1085,7 @@ class Handler(BaseHTTPRequestHandler):
         anchor = api._anchor(cids, hit["date_unix"])
         rows = (api._page(cids, "older", anchor, ctx, inclusive=True)
                 + api._page(cids, "newer", anchor, ctx))
-        aliases = api.config.get("aliases", {})
+        aliases = api.aliases
         day = datetime.fromtimestamp(hit["date_unix"]).strftime("%A, %B %-d, %Y")
         def esc(s):
             return (str(s).replace("&", "&amp;").replace("<", "&lt;")
@@ -1161,6 +1158,7 @@ def main():
 
     if archive:
         Handler.api = Api(archive, Store(STORE_DIR), config)
+        print(f"· contacts: {len(Handler.api.aliases)} names on the desk")
     else:
         # serve the page so the consent card can explain, retry reopens
         dummy = type("A", (), {"q": lambda *a, **k: [],
