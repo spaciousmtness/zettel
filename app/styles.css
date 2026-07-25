@@ -1242,3 +1242,73 @@ body.calm #chronology { flex-basis: 76px; }
   .resume-pill, .wl-toast { max-width: calc(100vw - 24px); text-align: center; }
   .track-note-editor { width: calc(100% - 16px); }
 }
+
+/* ---- the arrival ------------------------------------------------------------
+   A stranger's first ten seconds. Centred, because it is the only thing on
+   screen that matters yet, and it leaves on the first tap either way.
+
+   Depth is the house device — .lifted's misregistered edge — never a shadow
+   and never a scrim: the record stays legible underneath, which is the whole
+   argument the interface is making about layers. */
+.arrival {
+  position: fixed; inset: 0; z-index: var(--z-consent);
+  display: grid; place-items: center;
+  padding: var(--s3);
+  /* not a dimming scrim — a whisper of the paper, so the track behind stays
+     readable and the card reads as laid ON it rather than cut out of it */
+  background: color-mix(in srgb, var(--vellum) 72%, transparent);
+  pointer-events: auto;
+}
+.arrival-card {
+  margin: 0; max-width: 44ch; width: 100%;
+  padding: var(--s4);
+  background: var(--bone);
+  border: 1.5px solid var(--ink); border-radius: 4px;
+  position: relative;
+}
+/* the offset edge, by hand rather than via .lifted, because this card wants
+   the heavier 1.5px rule against the ink and .lifted's is a deckle hairline */
+.arrival-card::after {
+  content: ""; position: absolute; inset: -1px;
+  transform: translate(2px, 2px);
+  border: 1px solid var(--deckle); border-radius: inherit;
+  pointer-events: none; z-index: -1;
+}
+.arrival-head { color: var(--umber); margin: 0 0 var(--s2); }
+.arrival-said {
+  margin: 0 0 var(--s2); padding: 0 0 0 var(--s2);
+  border-left: 2px solid var(--amber);
+  font-size: 1.25rem; line-height: 1.4;
+}
+.arrival-line { color: var(--slate); margin: 0 0 var(--s2); }
+.arrival-gloss {
+  color: var(--graphite); font-size: .95rem; margin: 0 0 var(--s3);
+}
+.arrival-row { display: flex; gap: var(--s2); align-items: center; }
+.arrival-go {
+  padding: var(--s2) var(--s3);
+  color: var(--bone); background: var(--ink);
+  border: 1.5px solid var(--ink); border-radius: 4px;
+  font: inherit; cursor: pointer;
+}
+.arrival-go:hover { background: var(--sienna); border-color: var(--sienna); }
+.arrival-go:focus-visible {
+  outline: 2px solid var(--amber); outline-offset: 2px;
+}
+
+/* e-ink: the plane arrives, it does not fade in. A cross-fade over a
+   full-width card is the worst case for ghosting on a reflective panel. */
+body.calm .arrival { background: var(--vellum); }
+body.calm .arrival-card::after { display: none; }
+
+@media (max-width: 480px) {
+  .arrival { place-items: end center; padding-bottom: var(--s4); }
+  .arrival-row { flex-wrap: wrap; }
+  .arrival-go { width: 100%; }
+}
+
+/* ---- the tie between two askings -------------------------------------------
+   Drawn on the Z plane by zlayer.ties(). Form carries it: a long dash is a
+   SPAN, where the candidate's fine dash is a boundary. Nothing here is
+   hue-bearing, so it survives grayscale like everything else on the sheet. */
+#z-svg .z-tie { pointer-events: none; }

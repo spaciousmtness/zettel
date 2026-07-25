@@ -4,6 +4,7 @@ import { Waveform } from "./waveform.js";
 import { ZLayer } from "./zlayer.js";
 import { MARK_DIALECT, TAPBACK_GLYPHS, markGlyph, armCrossing, armTwoTap,
          installApiSecurity, safeHttpUrl } from "./shared.js";
+import { scan as scanResonance, describe as describeSpan } from "./resonance.js";
 
 const $ = (id) => document.getElementById(id);
 
@@ -243,7 +244,8 @@ for (const button of document.querySelectorAll("#track-ranges button")) {
 function syncIntelligenceOverlay() {
   const readings = state.summons || [];
   const candidates = state.candidates || [];
-  const total = readings.length + candidates.length;
+  const resonances = state.resonances || [];
+  const total = readings.length + candidates.length + resonances.length;
   const button = $("track-z");
   // Absent, not inert. With nothing on the sheet there is no control to
   // press — the same honesty rule that makes the summon verb vanish rather
@@ -252,6 +254,7 @@ function syncIntelligenceOverlay() {
   if (total === 0) {
     zlayer.setCandidates([]);
     zlayer.setReadings([]);
+    zlayer.setResonances([]);
     zlayer.setLift(0);
     // ...and the pen goes with it. Leaving through this branch skipped
     // syncPen(), so opening a thread WITH candidates, lifting the sheet,
@@ -264,6 +267,7 @@ function syncIntelligenceOverlay() {
   }
   zlayer.setReadings(readings);
   zlayer.setCandidates(candidates);
+  zlayer.setResonances(resonances);
   if (typeof syncPen === "function") syncPen();
   const lifted = zlayer.lift > 0.5;
   button.setAttribute("aria-pressed", lifted ? "true" : "false");
@@ -421,9 +425,22 @@ async function boot() {
     // and autoplay, which is exactly the "starts at the earliest" she asked
     // us to stop doing. The on-this-day card (a non-moving offer) still
     // appears after the first visit.
-    if (!localStorage.getItem("wl-revealed")) {
+    // A stranger's first ten seconds decide whether there is an eleventh.
+    // The old reveal opened the layer after 700ms, which shows the machinery
+    // and says nothing — you are looking at a waveform of somebody else's
+    // life with no reason to care. So the first visit WAITS, briefly, for
+    // the resonance scan to find something worth arriving on, and opens the
+    // layer anyway if it doesn't. Nothing here ever moves the stream on its
+    // own: the card is an offer, and travelling is a tap.
+    if (!localStorage.getItem("wl-revealed") ||
+        new URLSearchParams(location.search).has("arrive")) {
       localStorage.setItem("wl-revealed", "1");
-      setTimeout(() => { if (!layerOpen()) openLayer(); }, 700);
+      state.arrivalOpen = true;
+      setTimeout(() => {
+        if (!state.arrivalOpen) return;   // an arrival landed; leave it alone
+        state.arrivalOpen = false;
+        if (!layerOpen()) openLayer();
+      }, 4000);
     } else {
       maybeOnThisDay(); // the daily ritual — a card, never a jump
     }
@@ -484,6 +501,97 @@ function maybeResumeReading() {
   });
   document.body.append(pill);
   setTimeout(() => { if (pill.isConnected) pill.remove(); }, 12000);
+}
+
+// ---- the arrival: what a stranger sees first ------------------------------------
+// One card, offered once, naming the strongest thing the sheet found in this
+// archive without anyone asking it to look. It states the finding and then
+// stops — the stream does not move, nothing lifts, and the only way onward
+// is a tap. An interface that seizes the view to impress you has told you
+// what it thinks of your attention.
+
+function offerArrival(resonance) {
+  if (!state.arrivalOpen) return;         // the moment has passed, or was used
+  if (!resonance?.pair) return;
+  state.arrivalOpen = false;
+  $("arrival")?.remove();
+
+  const wrap = document.createElement("aside");
+  wrap.id = "arrival";
+  wrap.className = "arrival";
+  const card = document.createElement("div");
+  card.className = "card arrival-card";
+  card.setAttribute("role", "dialog");
+  card.setAttribute("aria-modal", "false");
+  card.setAttribute("aria-labelledby", "arrival-head");
+
+  const head = document.createElement("p");
+  head.className = "mono arrival-head";
+  head.id = "arrival-head";
+  head.textContent = "the sheet found this on its own";
+
+  // The sentence itself, as it was typed. This is the only place in the
+  // interface where a message is quoted out of the stream, and it earns it:
+  // the finding IS the sentence.
+  const said = document.createElement("blockquote");
+  said.className = "arrival-said";
+  said.textContent = `“${resonance.text}”`;
+
+  const { firstYear, againYear, span } = resonance.pair;
+  const line = document.createElement("p");
+  line.className = "mono arrival-line";
+  line.textContent =
+    `asked in ${firstYear} · asked again in ${againYear} · ${span} apart`;
+
+  const gloss = document.createElement("p");
+  gloss.className = "arrival-gloss";
+  gloss.textContent =
+    "Both times, the question sat unanswered. Nothing searched for it — " +
+    "the layer proposed two silences, and the same sentence was underneath " +
+    "both of them.";
+
+  const row = document.createElement("div");
+  row.className = "row arrival-row";
+  const go = document.createElement("button");
+  go.className = "arrival-go";
+  go.textContent = "lift the sheet and show me";
+  const later = document.createElement("button");
+  later.className = "quiet mono";
+  later.textContent = "not now";
+
+  const close = () => {
+    wrap.remove();
+    document.removeEventListener("keydown", onKey, true);
+  };
+  const onKey = (e) => {
+    if (e.key === "Escape") { e.stopPropagation(); close(); }
+  };
+  later.addEventListener("click", close);
+  go.addEventListener("click", () => {
+    close();
+    stopPlaying();
+    openLayer();
+    // Land on the FIRST asking, not the return. The return is the punchline
+    // and it is already drawn on the sheet with a line running to it; being
+    // shown the punchline first is the difference between reading something
+    // and being told about it.
+    const at = Number(resonance.pair.first);
+    if (Number.isFinite(at)) timeline.jump(at);
+    // lift after the jump so the sheet rises over a track that is already
+    // where it belongs — the plane has no meaning without the record under it
+    setTimeout(() => {
+      zlayer.setLift(1);
+      syncIntelligenceOverlay();
+      syncPen();
+    }, 220);
+  });
+  row.append(go, later);
+
+  card.append(head, said, line, gloss, row);
+  wrap.append(card);
+  document.body.append(wrap);
+  document.addEventListener("keydown", onKey, true);
+  go.focus();
 }
 
 // ---- on this day: the reason to open it tomorrow ---------------------------------
@@ -555,6 +663,7 @@ async function openThread(identifier, threads) {
   state.density = [];
   state.summons = [];
   state.candidates = [];
+  state.resonances = [];
   chronology.reset();
   // the server's merge key for this thread — one function (db.py's
   // thread_key) decides it; the client just remembers what it was told
@@ -610,6 +719,30 @@ async function openThread(identifier, threads) {
   updateTrackMeta();
   updateTrackReadout(timeline.visibleDate());
   maybeResumeReading();  // opened at latest; offer a jump back if bookmarked
+  findResonances(epoch, identifier);   // deliberately not awaited
+}
+
+// ---- resonance: the same question, asked again years later ---------------------
+// Reads the text behind the candidates the server proposed. The server never
+// learns what it found — /api/candidates stays content-blind, and the pairing
+// happens here, in this browser, over messages already on this screen.
+//
+// Never awaited by openThread: it costs one small request per proposed
+// question, and the stream must be readable long before it finishes.
+
+async function findResonances(epoch, identifier) {
+  try {
+    const found = await scanResonance(state.candidates, {
+      chat: identifier,
+      fetchJson: async (url) => (await fetch(url)).json(),
+    });
+    // a thread switch mid-scan must not paint A's echoes over B
+    if (state.threadEpoch !== epoch || state.chat !== identifier) return;
+    if (!found.length) return;
+    state.resonances = found;
+    syncIntelligenceOverlay();
+    offerArrival(found[0]);
+  } catch { /* the sheet without echoes is the sheet that shipped */ }
 }
 
 // ---- the co-layer: private readings can be offered into a shared journal ------

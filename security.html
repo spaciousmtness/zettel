@@ -1,0 +1,288 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Zettel — what we hold, and what we can't</title>
+<meta name="description" content="Zettel's security boundary, stated plainly: message content never reaches our servers, because there is no column for it.">
+<meta property="og:title" content="Zettel — what we hold, and what we can't">
+<meta property="og:description" content="Scope is defined by what enters the boundary. Almost nothing does.">
+<style>
+:root {
+  --bone:#faf8f2; --vellum:#f6f2e9; --plate:#f4f0e7; --greige:#efe9db;
+  --deckle:#c9c2b2; --ink:#1c1a15; --graphite:#57514a; --slate:#6f685c;
+  --umber:#8a8376; --hairline:#d8d1c1; --amber:#e8720c; --sienna:#b34d00;
+}
+* { box-sizing: border-box; margin: 0; }
+body {
+  background: var(--vellum); color: var(--ink);
+  font-family: Georgia, 'Iowan Old Style', serif;
+  font-size: 18px; line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+}
+.mono { font-family: ui-monospace, Menlo, monospace; font-size: 11.5px;
+        letter-spacing: .09em; color: var(--slate); text-transform: uppercase; }
+.wrap { max-width: 44rem; margin: 0 auto; padding: 0 24px; }
+header { padding: 7vh 0 4vh; }
+h1 { font-size: clamp(28px, 5vw, 42px); font-weight: normal; line-height: 1.15;
+     letter-spacing: -0.01em; margin-bottom: 16px; }
+h1 em { font-style: italic; color: var(--sienna); }
+.lede { font-size: clamp(17px, 2.2vw, 20px); color: var(--graphite); }
+section { padding: 36px 0; border-top: 1px solid var(--hairline); }
+h2 { font-size: 15px; font-weight: normal; font-style: italic;
+     color: var(--slate); margin-bottom: 14px; }
+h3 { font-size: 21px; font-weight: normal; margin: 22px 0 6px; }
+p + p { margin-top: 12px; }
+p { color: var(--graphite); }
+p.plain { color: var(--ink); }
+code { font-family: ui-monospace, Menlo, monospace; font-size: 13px;
+       background: var(--plate); padding: 1px 5px; border-radius: 3px;
+       color: var(--ink); }
+a { color: var(--sienna); }
+
+/* the claim, set apart — this is the whole page in one box */
+.claim {
+  border: 1.5px solid var(--ink); border-radius: 5px; background: var(--bone);
+  padding: 22px 26px; margin: 8px 0 0; position: relative;
+}
+.claim::after {
+  content: ""; position: absolute; inset: -1px; transform: translate(2px, 2px);
+  border: 1px solid var(--deckle); border-radius: inherit;
+  pointer-events: none; z-index: -1;
+}
+.claim p { color: var(--ink); font-size: 20px; }
+.claim p + p { color: var(--graphite); font-size: 16px; margin-top: 10px; }
+
+table { border-collapse: collapse; width: 100%; margin-top: 12px;
+        font-size: 15px; }
+th, td { text-align: left; padding: 9px 12px; border-bottom: 1px solid var(--hairline);
+         vertical-align: top; }
+th { font-family: ui-monospace, Menlo, monospace; font-size: 10.5px;
+     letter-spacing: .09em; text-transform: uppercase; color: var(--slate);
+     font-weight: normal; }
+td:first-child { font-family: ui-monospace, Menlo, monospace; font-size: 12.5px;
+                 white-space: nowrap; color: var(--ink); }
+.scroll { overflow-x: auto; }
+
+ul { margin: 10px 0 0 0; padding-left: 20px; color: var(--graphite); }
+li { margin: 7px 0; }
+li strong { color: var(--ink); font-weight: normal;
+            border-bottom: 1px solid var(--deckle); }
+
+.status { display: flex; gap: 10px; align-items: baseline; margin: 6px 0; }
+.status .tag { font-family: ui-monospace, Menlo, monospace; font-size: 10.5px;
+               letter-spacing: .08em; text-transform: uppercase;
+               border: 1px solid var(--deckle); border-radius: 3px;
+               padding: 2px 7px; color: var(--slate); white-space: nowrap; }
+.status .tag.yes { border-color: var(--ink); color: var(--ink); }
+.status .tag.no  { border-style: dashed; }
+
+footer { padding: 36px 0 64px; border-top: 1px solid var(--hairline); }
+footer p { font-family: ui-monospace, Menlo, monospace; font-size: 11.5px;
+           letter-spacing: .06em; color: var(--umber); text-transform: none; }
+@media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <p class="mono">Zettel · security</p>
+    <h1>What we hold, and <em>what we can't</em>.</h1>
+    <p class="lede">Most privacy pages describe how carefully a company guards
+      the things it collects. This one is mostly a list of things that never
+      arrive.</p>
+  </header>
+
+  <section>
+    <h2>the boundary</h2>
+    <div class="claim">
+      <p>There is no column anywhere in our database for the content of a
+        message.</p>
+      <p>Not empty. Not nullable. Not “we don’t populate it.” The column does
+        not exist, and a test in our build fails if anyone adds one. You can
+        read the schema yourself — it is the first file in
+        <a href="https://github.com/spaciousmtness/zettel/blob/main/server/schema.sql"><code>server/schema.sql</code></a>.</p>
+    </div>
+    <p style="margin-top:18px">Your messages are read on your own machine, from
+      your own archive, opened read-only. They are never uploaded, never
+      indexed remotely, and never sent to a model unless you select a specific
+      passage and confirm it twice — at which point the app shows you the exact
+      payload before anything crosses.</p>
+  </section>
+
+  <section>
+    <h2>what actually syncs</h2>
+    <p>Only the Z layer: your marks, your ink, your chapters. An annotation is
+      stored as four things.</p>
+    <div class="scroll">
+      <table>
+        <thead>
+          <tr><th>column</th><th>what it is</th><th>what we can learn from it</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>timeline</td>
+            <td>An opaque handle. Your device computes it by HMAC-ing a
+                conversation identifier with a salt that belongs to your
+                account.</td>
+            <td>That two marks belong to the same bucket. Not whose
+                conversation it is, not who is in it.</td>
+          </tr>
+          <tr>
+            <td>t0, t1</td>
+            <td>The moment, or the stretch of time, the mark is anchored to.</td>
+            <td>That something was marked then.</td>
+          </tr>
+          <tr>
+            <td>y</td>
+            <td>A height between 0 and 1 — where on the sheet your pen was.</td>
+            <td>Nothing.</td>
+          </tr>
+          <tr>
+            <td>body_ct</td>
+            <td>Your own words, if the mark has any.</td>
+            <td>Intended to be sealed on your device before it leaves. See
+                <em>not true yet</em>, below.</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <p style="margin-top:16px">The strongest sentence anyone could build from
+      our database — including us, including someone with a subpoena — is
+      <em>“this account marked something in this opaque bucket at this
+      moment.”</em></p>
+    <p>Rotating your account’s salt orphans every handle at once. That is what
+      our delete button actually does, and it is one column.</p>
+  </section>
+
+  <section>
+    <h2>why it is built this way</h2>
+    <p class="plain">Because scope is defined by what enters the boundary.</p>
+    <p>A company that ingests your messages and encrypts them has to defend
+      that decision forever — to an auditor, to a breach, to whoever buys them
+      later. A company that never receives them has a much shorter
+      conversation. We would rather have the shorter conversation, and we would
+      rather you be able to verify it by reading a file than by trusting a
+      paragraph.</p>
+    <p>It also means the interesting part had to be built without reading
+      anything. Zettel proposes where to look in your archive using structure
+      alone — a question mark, then a fortnight of silence — and returns who
+      spoke and how long the quiet lasted, never a word of what was said. The
+      reading happens in your browser, on your machine, over messages already
+      on your screen.</p>
+  </section>
+
+  <section>
+    <h2>where we actually are</h2>
+    <p>Stated plainly, because a security page that reads like a finished
+      product is the least trustworthy kind.</p>
+
+    <h3>True today</h3>
+    <ul>
+      <li><strong>No message content on our servers.</strong> Enforced by the
+        schema and by a test.</li>
+      <li><strong>Read-only access to your archive.</strong> One SQLite
+        connection, <code>mode=ro</code>, never written.</li>
+      <li><strong>Credentials stored as hashes,</strong> compared in constant
+        time. A dump of our database is not a set of working logins.</li>
+      <li><strong>Sign-in tells attackers nothing.</strong> We answer
+        identically whether or not an address has an account, so a breach dump
+        from somewhere else cannot be turned into a list of our users.</li>
+      <li><strong>An audit log from day one</strong> — who, what verb, what
+        outcome. Never a body, never an address.</li>
+      <li><strong>Account deletion is a delete,</strong> not a flag. Identities,
+        sessions, devices and annotations cascade.</li>
+      <li><strong>The source is public.</strong> Every claim on this page is
+        checkable against it.</li>
+    </ul>
+
+    <h3>Not true yet</h3>
+    <ul>
+      <li><strong>Client-side sealing of annotation bodies.</strong> The column
+        and the contract exist; the key derivation does not. Until it ships,
+        treat your note text as something we could technically read, and do not
+        let us tell you otherwise.</li>
+      <li><strong>No independent security review.</strong> Nothing here has been
+        looked at by anyone outside the project.</li>
+      <li><strong>No SOC 2, no ISO 27001.</strong> We have not started an audit.
+        We think the architecture makes one unusually cheap when we do, but
+        that is a prediction, not a certificate.</li>
+    </ul>
+
+    <div style="margin-top:20px">
+      <div class="status"><span class="tag yes">yes</span>
+        <span>Message content stays on your machine</span></div>
+      <div class="status"><span class="tag yes">yes</span>
+        <span>Source public and independently checkable</span></div>
+      <div class="status"><span class="tag no">not yet</span>
+        <span>Annotation bodies sealed on-device</span></div>
+      <div class="status"><span class="tag no">not yet</span>
+        <span>Third-party penetration test</span></div>
+      <div class="status"><span class="tag no">not yet</span>
+        <span>SOC 2 Type II · ISO 27001</span></div>
+    </div>
+  </section>
+
+  <section>
+    <h2>HIPAA, and being careful about it</h2>
+    <p>People have asked whether Zettel can be used where protected health
+      information is involved — a clinician annotating their own record of a
+      conversation, for instance.</p>
+    <p>Our honest position: because message content never reaches our systems,
+      we do not believe we receive PHI, and therefore do not believe we act as
+      a Business Associate. We are stating that as our reading of our own
+      architecture, not as legal advice, and we have not had it tested by
+      counsel or by a regulator. If you are considering Zettel in a regulated
+      setting, tell us and we will put the architecture in front of your
+      compliance team in as much detail as they want — including the schema,
+      which is the part that actually answers the question.</p>
+  </section>
+
+  <section>
+    <h2>subprocessors</h2>
+    <div class="scroll">
+      <table>
+        <thead><tr><th>who</th><th>what for</th><th>what they see</th></tr></thead>
+        <tbody>
+          <tr><td>Cloudflare</td><td>Hosting, database, rate limiting</td>
+              <td>Account identifiers, opaque timeline handles, annotation
+                  rows. No message content.</td></tr>
+          <tr><td>Resend</td><td>Sign-in emails</td>
+              <td>Your email address and the sign-in link.</td></tr>
+          <tr><td>Twilio</td><td>Sign-in codes</td>
+              <td>Your phone number and a six-digit code.</td></tr>
+          <tr><td>GitHub</td><td>The source and this page</td>
+              <td>Nothing of yours.</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p style="margin-top:14px">If you sign in with Google or Apple, that
+      provider learns you signed in to Zettel. If you would rather they didn’t,
+      use email or phone.</p>
+  </section>
+
+  <section>
+    <h2>reporting something</h2>
+    <p>If you find a vulnerability, we want to hear about it before anyone else
+      does. Open a private security advisory on
+      <a href="https://github.com/spaciousmtness/zettel/security/advisories/new">the
+      repository</a>, or email
+      <a href="mailto:security@zettel.ink">security@zettel.ink</a>.</p>
+    <p>We will acknowledge within three working days and tell you honestly
+      whether we can fix it and when. We are a very small team; we would rather
+      say “this will take a month” than go quiet. We will not threaten you, and
+      we will credit you unless you ask us not to.</p>
+  </section>
+
+  <footer>
+    <p>Last reviewed against the code on this page’s deploy.
+       Every claim here is checkable at
+       <a href="https://github.com/spaciousmtness/zettel">github.com/spaciousmtness/zettel</a>.
+       If you find one that isn’t true, that is a bug and we will treat it as one.</p>
+    <p style="margin-top:10px"><a href="./">← back to Zettel</a></p>
+  </footer>
+
+</div>
+</body>
+</html>

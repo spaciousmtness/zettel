@@ -57,6 +57,13 @@ jobs:
           fi
           echo "· only reserved 555 numbers present"
 
+      # resonance.js is pure and testable, and one of its tests runs against
+      # the real demo snapshot — so this also asserts that the archive a
+      # stranger loads still contains the finding the arrival lands them on.
+      # If the demo data is ever regenerated without it, this goes red.
+      - name: client tests
+        run: node --test 'test/*.test.js'
+
   server:
     name: server tests
     runs-on: ubuntu-latest
