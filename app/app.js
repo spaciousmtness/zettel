@@ -1807,6 +1807,9 @@ async function openSummon(bounds, initialLens = "ask") {
 // ---- the ledger: marks as the working document of the pair -------------------
 
 const ledger = { emoji: null, showSettled: false };
+// a leading dialect mark plus its optional variation selector and spacing
+const LEADING_MARK =
+  /^\s*[\u{1F4CC}\u{1F525}\u2753\u{1FA77}\u2705\u{1F44D}]\uFE0F?\s*/u;
 const MARK_LABELS = {
   "📌": "decision", "🔥": "idea", "❓": "question",
   "🩷": "keepsake", "✅": "done", "👍": "agreed",
@@ -1981,12 +1984,12 @@ function renderLedger(body) {
     // still leads with the typed emoji read doubled: "◆📌 launch video…".
     // Drop the leading emoji from the PREVIEW only — the message itself is
     // untouched and still shows its 📌 in the stream.
+    // Strip with a REGEX, never by slicing emoji.length: a dialect emoji may
+    // carry a variation selector, and the arithmetic ate the first real letter
+    // of the message ("glad you're back" rendered as "lad you're back").
     const prev = row.querySelector(".preview");
-    if (prev && m.emoji) {
-      const led = prev.textContent.trimStart();
-      if (led.startsWith(m.emoji)) {
-        prev.textContent = led.slice(m.emoji.length).trimStart();
-      }
+    if (prev) {
+      prev.textContent = prev.textContent.replace(LEADING_MARK, "");
     }
     if (m.state === "resurfaced") {
       const rs = document.createElement("span");

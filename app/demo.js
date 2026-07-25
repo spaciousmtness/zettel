@@ -673,8 +673,12 @@
 
   /* ---- export: the markdown transcript, rendered here ----------------- */
 
-  var TAPBACK_GLYPHS = { 0: "♥", 1: "▲", 2: "▼",
-                         3: "ha", 4: "!!", 5: "?" };
+  // db.py's OWN TAPBACK_GLYPHS, not shared.js's ink forms: the exported
+  // transcript is a file handed to a third party and must read like the
+  // server's byte for byte. (shared.js uses ♥ ▲ ▼ / ha / !! / ? on screen —
+  // deliberately different, and NOT what belongs here.)
+  var TAPBACK_GLYPHS = { 0: "❤", 1: "\u{1F44D}", 2: "\u{1F44E}",
+                         3: "\u{1F604}", 4: "‼", 5: "❓" };
   var DAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday",
               "Friday", "Saturday"];
   var MONTHS = ["January", "February", "March", "April", "May", "June",
