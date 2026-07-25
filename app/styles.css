@@ -1366,3 +1366,8 @@ body.calm .arrival-card::after { display: none; }
 #layer-down { min-width: 44px; min-height: 44px; align-self: center;
   border: 1px solid var(--umber); border-radius: 3px;
   background: var(--bone); color: var(--ink); }
+
+/* hold-to-speak: while the hand is down, the ring fills and the border
+   carries the state by weight — form, never a pulse, so it is calm-safe */
+#track-voice[data-rec="1"] { color: var(--sienna);
+  border-color: var(--amber); border-width: 2px; font-weight: bold; }

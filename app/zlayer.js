@@ -24,18 +24,24 @@ const GLYPH = {
   // that means two places at once, which is why it is the only one that
   // draws a tie line between its ends.
   resonance: "≈",
+  // a filled ring: sound, held. The one mark on the sheet the eye cannot
+  // read — tapping it is the only way in, which is honest, because that
+  // is also true of the voice it keeps.
+  voice: "◉",
 };
 
 export class ZLayer {
-  constructor(waveform, { onDescend, onSummon, onInk } = {}) {
+  constructor(waveform, { onDescend, onSummon, onInk, onVoice } = {}) {
     this.wave = waveform;
     this.onDescend = onDescend || (() => {});
     this.onSummon = onSummon || (() => {});
     this.onInk = onInk || (() => {});
+    this.onVoice = onVoice || (() => {});
     waveform.onRedraw = () => this.draw();   // repaint with the record
     this.candidates = [];
     this.readings = [];
     this.resonances = [];
+    this.voices = [];
     this._lift = 0;
     this._armed = null;
     this._armTimer = null;
@@ -122,6 +128,13 @@ export class ZLayer {
    *  the server never learned these two sentences were the same one. */
   setResonances(list) {
     this.resonances = Array.isArray(list) ? list : [];
+    this.draw();
+  }
+
+  /** Spoken marks — sound anchored to a moment, kept on the owner's own
+   *  machine. The sheet draws where; only a tap says what. */
+  setVoices(list) {
+    this.voices = Array.isArray(list) ? list : [];
     this.draw();
   }
 
@@ -246,6 +259,7 @@ export class ZLayer {
     // glyph, and above everything else so the pair reads as one object
     this.ties(w, h);
     for (const r of this.cluster(this.resonances, w)) this.tab(r, w, h, false);
+    for (const v of this.cluster(this.voices, w)) this.tab(v, w, h, false);
   }
 
   /** The line between two askings of the same sentence.
@@ -461,6 +475,7 @@ export class ZLayer {
       // a cluster is NEVER silently resolved to one of its members
       if (many) return this.focusRange(cluster.from, cluster.to);
       if (candidate) this.onSummon(item);
+      else if (item.kind === "voice") this.onVoice(item);
       else this.onDescend(item);
     };
     // Touch and pen preview, then commit — the house grammar, and the reason
