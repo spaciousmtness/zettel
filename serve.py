@@ -208,11 +208,12 @@ class Store:
             self.data = json.loads(self.path.read_text())
         except Exception:
             self.data = {}
-        for k in ("notes", "chapters", "states", "inks"):
+        for k in ("notes", "chapters", "states", "inks", "voices"):
             self.data.setdefault(k, {})
 
     def bucket(self, kind, key):
-        return self.data[kind].setdefault(key, [] if kind in ("notes", "chapters") else {})
+        return self.data[kind].setdefault(
+            key, [] if kind in ("notes", "chapters", "voices") else {})
 
     def save(self):
         with self.lock:
@@ -866,6 +867,13 @@ class Api:
     def inks(self, sp, cids, key):
         return {"inks": self.s.data["inks"].get(key, {})}
 
+    def voicenotes(self, sp, cids, key):
+        """Spoken marks: the sheet gets where and how long; the sound itself
+        stays a file on this Mac, fetched only when its ◉ is tapped."""
+        return {"voicenotes": [
+            {"id": v["id"], "ts": v["ts"], "dur": v.get("dur", 0)}
+            for v in self.s.bucket("voices", key)]}
+
 
 FDA_HELP = """The archive couldn't be opened: {err}
 This is almost always macOS protecting your Messages — grant access and try again:
@@ -922,6 +930,8 @@ class Handler(BaseHTTPRequestHandler):
 
         if path.startswith("/api/attachments/"):
             return self._attachment(path[len("/api/attachments/"):], sp)
+        if path.startswith("/api/voicenote/"):
+            return self._voice_audio(path[len("/api/voicenote/"):])
         if path.startswith("/api/"):
             return self._api_get(path[len("/api/"):], sp)
         if path.rstrip("/") == "/card":
@@ -943,6 +953,7 @@ class Handler(BaseHTTPRequestHandler):
             "chapters": lambda: api.chapters(sp, cids, key),
             "notes": lambda: api.notes(sp, cids, key),
             "inks": lambda: api.inks(sp, cids, key),
+            "voicenotes": lambda: api.voicenotes(sp, cids, key),
             "summons": lambda: {"summons": []},
             "co": lambda: {"linked": False, "you": None},
             "threads": lambda: {"items": []},
@@ -1020,6 +1031,27 @@ class Handler(BaseHTTPRequestHandler):
                 api.s.bucket("states", key)[str(body["rowid"])] = str(body["state"])
                 api.s.save()
                 return self._send(200, {"state": body["state"]})
+            if route == "voicenote":
+                # data URL in, file on disk out — the JSON store holds only
+                # the coordinate and a pointer, never the sound itself
+                raw = str(body.get("audio", ""))
+                m = re.match(r"data:(audio/[\w.+-]+);base64,(.+)$", raw, re.S)
+                if not m or len(m.group(2)) > 6_000_000:
+                    return self._send(400, {"error": "bad or oversized audio"})
+                import base64
+                ext = {"audio/mp4": "m4a", "audio/webm": "webm",
+                       "audio/ogg": "ogg"}.get(m.group(1), "bin")
+                vid = secrets.token_hex(8)
+                vdir = STORE_DIR / "voice"
+                vdir.mkdir(parents=True, exist_ok=True)
+                (vdir / f"{vid}.{ext}").write_bytes(
+                    base64.b64decode(m.group(2)))
+                api.s.bucket("voices", key).append({
+                    "id": vid, "ext": ext, "mime": m.group(1),
+                    "ts": float(body["ts"]), "dur": float(body.get("dur", 0)),
+                    "created": time.time()})
+                api.s.save()
+                return self._send(200, {"ok": True, "id": vid})
             if route == "ink":
                 api.s.data["inks"].setdefault(key, {})[str(body["fp"])] = {
                     "ts": body.get("ts"), "pages": body.get("pages", [])}
@@ -1028,6 +1060,17 @@ class Handler(BaseHTTPRequestHandler):
         except (KeyError, ValueError, TypeError) as e:
             return self._send(400, {"error": f"bad request: {e}"})
         return self._send(404, {"error": "nothing here"})
+
+    def _voice_audio(self, vid):
+        vid = re.sub(r"[^a-f0-9]", "", vid.split("?")[0])
+        for bucket in self.api.s.data["voices"].values():
+            for v in bucket:
+                if v["id"] == vid:
+                    f = STORE_DIR / "voice" / f"{vid}.{v['ext']}"
+                    if f.exists():
+                        return self._send(200, f.read_bytes(),
+                                          ctype=v.get("mime", "audio/mp4"))
+        return self._send(404, {"error": "that voice note is gone"})
 
     # -- attachments ----------------------------------------------------------
 

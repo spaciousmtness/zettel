@@ -156,6 +156,8 @@ const zlayer = new ZLayer(waveform, {
     if (Number.isFinite(ts)) timeline.jump(ts);
   },
   onInk: () => syncPen(),
+  // ◉ tapped: the only way into a spoken mark is to hear it
+  onVoice: (entry) => playVoice(entry),
 });
 window.__zlayer = zlayer;
 
@@ -245,7 +247,9 @@ function syncIntelligenceOverlay() {
   const readings = state.summons || [];
   const candidates = state.candidates || [];
   const resonances = state.resonances || [];
-  const total = readings.length + candidates.length + resonances.length;
+  const voices = state.voicenotes || [];
+  const total = readings.length + candidates.length + resonances.length +
+    voices.length;
   const button = $("track-z");
   // Absent, not inert. With nothing on the sheet there is no control to
   // press — the same honesty rule that makes the summon verb vanish rather
@@ -255,6 +259,7 @@ function syncIntelligenceOverlay() {
     zlayer.setCandidates([]);
     zlayer.setReadings([]);
     zlayer.setResonances([]);
+    zlayer.setVoices([]);
     zlayer.setLift(0);
     // ...and the pen goes with it. Leaving through this branch skipped
     // syncPen(), so opening a thread WITH candidates, lifting the sheet,
@@ -268,6 +273,11 @@ function syncIntelligenceOverlay() {
   zlayer.setReadings(readings);
   zlayer.setCandidates(candidates);
   zlayer.setResonances(resonances);
+  zlayer.setVoices(voices.map((v) => ({
+    kind: "voice", id: v.id,
+    reason: `${Math.round(v.dur || 0)}s spoken here — tap to hear it`,
+    anchor: { from_ts: v.ts, to_ts: v.ts, ts: v.ts },
+  })));
   if (typeof syncPen === "function") syncPen();
   const lifted = zlayer.lift > 0.5;
   button.setAttribute("aria-pressed", lifted ? "true" : "false");
@@ -282,6 +292,7 @@ function toggleZLayer() {
 // The pen only exists while the sheet is up — you cannot write on a plane
 // that isn't there, so the control is absent rather than inert.
 function syncPen() {
+  if (window.syncVoice) window.syncVoice();
   const up = zlayer.lift > 0.5;
   const pen = $("track-pen");
   const undo = $("track-undo");
@@ -503,6 +514,108 @@ function maybeResumeReading() {
   setTimeout(() => { if (pill.isConnected) pill.remove(); }, 12000);
 }
 
+// ---- voice on the sheet ---------------------------------------------------------
+// Speech is the one input that is already time-indexed, which makes it the
+// native citizen of this coordinate system: a spoken mark is {t, duration,
+// sound}, no translation step. The sound is FIRST-CLASS and the words are
+// deferred — exactly the ink philosophy (strokes now, the scribe later).
+// The audio never leaves the Mac: it lands in the server's sidecar as a
+// file, and the sheet carries only where and how long. Live server only —
+// the public demo has nowhere honest to put a stranger's voice.
+
+const LIVE = () => !!(window.__demo && window.__demo.live);
+
+async function loadVoices(epoch, identifier) {
+  if (!LIVE()) return;
+  try {
+    const q = encodeURIComponent(identifier);
+    const d = await (await fetch(`/api/voicenotes?chat=${q}`)).json();
+    if (state.threadEpoch !== epoch || state.chat !== identifier) return;
+    state.voicenotes = d.voicenotes || [];
+    if (state.voicenotes.length) syncIntelligenceOverlay();
+  } catch { /* a sheet without voices is yesterday's sheet */ }
+}
+
+let voicePlaying = null;
+function playVoice(entry) {
+  if (voicePlaying) { voicePlaying.pause(); voicePlaying = null; return; }
+  const audio = new Audio(`/api/voicenote/${encodeURIComponent(entry.id)}`);
+  voicePlaying = audio;
+  audio.addEventListener("ended", () => { voicePlaying = null; });
+  audio.play().catch(() => { voicePlaying = null; });
+}
+
+// hold to speak: down starts, up lands the mark at the reading line.
+// A walkie-talkie, not a toggle — there is no recording state to forget.
+(() => {
+  const btn = $("track-voice");
+  let rec = null, chunks = [], t0 = 0;
+  const supported = () =>
+    !!(navigator.mediaDevices && window.MediaRecorder);
+  window.syncVoice = () => {
+    btn.hidden = !(zlayer.lift > 0.5 && LIVE() && supported());
+  };
+  const mime = () =>
+    ["audio/mp4", "audio/webm;codecs=opus", "audio/webm"].find(
+      (m) => MediaRecorder.isTypeSupported(m)) || "";
+  btn.addEventListener("pointerdown", async (e) => {
+    e.preventDefault();
+    if (rec) return;
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      chunks = [];
+      rec = new MediaRecorder(stream, mime() ? { mimeType: mime() } : {});
+      rec.ondataavailable = (ev) => { if (ev.data.size) chunks.push(ev.data); };
+      rec.start();
+      t0 = Date.now();
+      btn.dataset.rec = "1";
+      btn.textContent = "◉ speaking…";
+    } catch {
+      btn.textContent = "◉ mic is closed";
+      setTimeout(() => { btn.textContent = "◉ hold to speak"; }, 2400);
+    }
+  });
+  const finish = () => {
+    if (!rec) return;
+    const recorder = rec;
+    rec = null;
+    btn.dataset.rec = "";
+    btn.textContent = "◉ keeping…";
+    const dur = (Date.now() - t0) / 1000;
+    const at = timeline.visibleDate();      // the reading line owns the moment
+    recorder.onstop = async () => {
+      recorder.stream.getTracks().forEach((t) => t.stop());
+      const blob = new Blob(chunks, { type: recorder.mimeType || "audio/mp4" });
+      // a tap is not a note, and a held-forever button is a mistake
+      if (dur < 0.6 || dur > 180 || !blob.size || !Number.isFinite(at)) {
+        btn.textContent = "◉ hold to speak";
+        return;
+      }
+      const fr = new FileReader();
+      fr.onload = async () => {
+        try {
+          const r = await fetch("/api/voicenote", {
+            method: "POST", headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ chat: state.chat, ts: at, dur,
+                                   audio: fr.result }),
+          });
+          if (!r.ok) throw new Error();
+          btn.textContent = "◉ kept";
+          loadVoices(state.threadEpoch, state.chat);
+        } catch {
+          btn.textContent = "◉ couldn't keep it";
+        }
+        setTimeout(() => { btn.textContent = "◉ hold to speak"; }, 2000);
+      };
+      fr.readAsDataURL(blob);
+    };
+    recorder.stop();
+  };
+  btn.addEventListener("pointerup", finish);
+  btn.addEventListener("pointercancel", finish);
+  btn.addEventListener("pointerleave", finish);
+})();
+
 // ---- the arrival: what a stranger sees first ------------------------------------
 // One card, offered once, naming the strongest thing the sheet found in this
 // archive without anyone asking it to look. It states the finding and then
@@ -664,6 +777,7 @@ async function openThread(identifier, threads) {
   state.summons = [];
   state.candidates = [];
   state.resonances = [];
+  state.voicenotes = [];
   chronology.reset();
   waveform.reset();   // a new conversation is a cold track
   // the server's merge key for this thread — one function (db.py's
@@ -721,6 +835,7 @@ async function openThread(identifier, threads) {
   updateTrackReadout(timeline.visibleDate());
   maybeResumeReading();  // opened at latest; offer a jump back if bookmarked
   findResonances(epoch, identifier);   // deliberately not awaited
+  loadVoices(epoch, identifier);       // ditto — live server only
 }
 
 // ---- resonance: the same question, asked again years later ---------------------
