@@ -3,7 +3,7 @@
 // mechanism: fetch around/before/after, splice, compensate scrollTop.
 
 import { MARK_DIALECT, TAPBACK_GLYPHS, armCrossing,
-         armTwoTap } from "./shared.js";
+         armTwoTap, safeHttpUrl } from "./shared.js";
 
 const PAGE = 100;
 const CAP = 600;
@@ -196,6 +196,15 @@ export class Timeline {
     try {
       const data = await this.fetchPage({ [direction === "older" ? "before" : "after"]: cursor.join(",") });
       if (data === null) return;
+      // The end we fetched from may not be the end any more. trim() runs
+      // synchronously inside any OTHER splice, drops 200 rows off one end and
+      // rewrites that end's cursor — and pollNewer never consults
+      // fetching.older before doing it. Splicing this page on regardless
+      // prepends it to a head it does not adjoin, and the cursor overwrite
+      // below then marks the skipped range as loaded, so it can never be
+      // fetched again: a silent, permanent hole of several hundred messages.
+      const live = direction === "older" ? this.cursorOlder : this.cursorNewer;
+      if (!live || live[0] !== cursor[0] || live[1] !== cursor[1]) return;
       if (data.messages.length < PAGE) {
         if (direction === "older") this.doneOlder = true;
         else this.doneNewer = true;
@@ -216,8 +225,12 @@ export class Timeline {
     try {
       const fromBottom =
         this.el.scrollHeight - this.el.scrollTop - this.el.clientHeight;
-      const data = await this.fetchPage({ after: this.cursorNewer.join(",") });
+      const issued = this.cursorNewer;
+      const data = await this.fetchPage({ after: issued.join(",") });
       if (data === null || !data.messages.length) return;
+      // same guard as extend(): the tail may have been trimmed underneath us
+      if (!this.cursorNewer || this.cursorNewer[0] !== issued[0] ||
+          this.cursorNewer[1] !== issued[1]) return;
       const nodes = this.splice("newer", data);
       const incoming = [];
       data.messages.forEach((message, i) => {
@@ -623,8 +636,19 @@ export class Timeline {
     let last = 0;
     for (const match of text.matchAll(URL_RE)) {
       el.append(text.slice(last, match.index));
+      // The same gate app.js's link panels use. URL_RE already blocks
+      // javascript: and data:, but `[^\s<>"']+` happily matches the userinfo
+      // form — and https://evil.example@real-bank.com reads to the eye as the
+      // bank. This is the surface where hostile text actually arrives, so it
+      // is the last place the rule should have been missing.
+      const safe = safeHttpUrl(match[0]);
+      if (!safe) {
+        el.append(match[0]);   // visible, inert — nothing vanishes silently
+        last = match.index + match[0].length;
+        continue;
+      }
       const a = document.createElement("a");
-      a.href = match[0];
+      a.href = safe.href;
       a.textContent = match[0];
       a.target = "_blank";
       a.rel = "noopener noreferrer";

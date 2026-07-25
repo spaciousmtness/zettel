@@ -466,7 +466,7 @@
     if (fold(text).trim().split(" ").filter(Boolean).length <= 18) return text;
     var words = text.split(/\s+/);
     var flat = fold(text);
-    var pos = flat.indexOf(fold(needle).slice(1, -1));
+    var pos = flat.indexOf(fold(needle));   // token-bounded, as above
     if (pos < 0) return text.slice(0, 160);
     var before = flat.slice(0, pos).trim();
     var wordIdx = before ? before.split(" ").length : 0;
@@ -522,9 +522,17 @@
                                          PAGE_LIMIT_MAX));
         var before = parseCursor(sp.get("before"));
         var f = parsed.filters;
+        // fold() pads with a leading and trailing space ON PURPOSE — that
+        // is the trick that makes indexOf a whole-TOKEN test. Slicing the
+        // padding off turned every needle into a substring match, so `ink`
+        // matched "thinking", "drinking", "sinking" — 137 hits in the demo
+        // archive, none of them containing the word. fts5 MATCH does not do
+        // that, and this file's claim to be byte-identical to the server
+        // depended on it. `flat` is padded too, so a needle at the very
+        // start or end of a message still matches.
         var needles = parsed.needles.map(function (n) {
-          return fold(n).slice(1, -1);
-        }).filter(Boolean);
+          return fold(n);
+        }).filter(function (n) { return n.trim(); });
 
         var rows = [];
         for (var i = pool.rows.length - 1; i >= 0; i--) {
@@ -1365,7 +1373,14 @@
       });
       return w;
     }
-    if (raw.indexOf("/") === 0 && raw.indexOf("//") !== 0) {
+    // Every in-app call site already builds its path from WL.base, which IS
+    // this BASE — so prefixing again produced /zettel/app/zettel/app/guide.html
+    // and the guide 404'd. Invisible when BASE is "/", i.e. everywhere except
+    // the project sub-path deployment this shim exists to support. Made
+    // idempotent rather than removed, so an un-rewritten root-absolute path
+    // is still repaired.
+    if (raw.indexOf("/") === 0 && raw.indexOf("//") !== 0 &&
+        raw.indexOf(BASE) !== 0) {
       raw = BASE + raw.slice(1);
     }
     return nativeOpen ? nativeOpen(raw, target, features) : null;

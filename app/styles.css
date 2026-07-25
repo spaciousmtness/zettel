@@ -264,8 +264,15 @@ main { display: flex; flex: 1; min-height: 0; position: relative; }
   color: var(--ink) !important; padding: 0 var(--s3);
   margin-left: auto;
 }
+/* Armed. The label was --amber on --bone: measured 2.89:1, on an 11px mono
+   string that needs 4.5:1 — so arming the send button made its label 5.7x
+   LESS legible than at rest (--ink on bone is 16.4:1), at the exact moment
+   it matters most. --sienna is 4.97:1 and reads as the same heat. The border
+   keeps amber, thickened to 2px so it carries the state by weight as well as
+   hue and survives grayscale. */
 #bubble-send[data-armed="1"] {
-  border-color: var(--amber) !important; color: var(--amber) !important;
+  border-color: var(--amber) !important; border-width: 2px !important;
+  color: var(--sienna) !important;
 }
 #bubble-note { flex: 1 1 100%; color: var(--slate); }
 
@@ -369,9 +376,11 @@ main { display: flex; flex: 1; min-height: 0; position: relative; }
   pointer-events: none;
 }
 /* e-ink ghosts: a pulse leaves a trail on the panel, so calm mode stops
-   ALL of them. Three were still breathing here (ember, pinback, resurfaced)
-   — form carries those states without motion. */
-body.calm .mark-halo, body.calm .msg.pinned::after,
+   ALL of them. The list said ALL and meant five of six — .mark-hot kept
+   breathing on the panel, and the prefers-reduced-motion list below (which
+   DOES include it) is the proof that this one drifted rather than being a
+   decision. Form carries every one of these states without motion. */
+body.calm .mark-halo, body.calm .mark-hot, body.calm .msg.pinned::after,
 body.calm .msg.ember::before, body.calm .msg.pinback::before,
 body.calm .msg.resurfaced::before {
   animation: none; opacity: .22;
@@ -417,7 +426,13 @@ body.calm .msg.resurfaced::before {
   position: relative; cursor: pointer;
   border-bottom: 1px dashed var(--umber);
   background: none; border-top: none; border-left: none; border-right: none;
-  min-height: 0; padding: 0; border-radius: 0;
+  /* NO `min-height: 0` here — it used to sit on this line and silently
+     cancelled the 44px declared six lines above, leaving a ~26px target on a
+     button that navigates the stream. The comment up there says it measured
+     398x17 and needs a hand-sized target; it was right, and then this undid
+     it. If the taller box ever crowds the sender line, widen the ::after
+     expander rather than shrinking the button back. */
+  padding: 0; border-radius: 0;
   font-family: ui-monospace, Menlo, monospace; font-size: 11px;
   letter-spacing: .08em; color: var(--slate);
 }

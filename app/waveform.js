@@ -543,6 +543,21 @@ export class Waveform {
     }
   }
 
+  /** A new conversation is a cold track.
+   *
+   *  `warm` protected only the FIRST thread of a session: nothing ever
+   *  returned it to false, so opening thread B painted every bar played on
+   *  the first frame — the solid amber comb this flag exists to prevent,
+   *  saying "you have listened to all of this" about a conversation just
+   *  opened. Deliberately NOT inside setData(): syncMapData() re-calls that
+   *  on every in-thread marks/notes refresh, which would un-warm the strip
+   *  mid-listen. */
+  reset() {
+    this.warm = false;
+    this.playheadTs = null;
+    this._paintKey = null;
+  }
+
   /** The hand has engaged the track — play or a deliberate scrub. Only now
    *  does the played region mean anything, so only now is it painted. */
   warmUp() {

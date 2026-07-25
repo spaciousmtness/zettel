@@ -62,9 +62,9 @@ function statsDispatch(data) {
   const days = years.reduce((s, p) => s + Number(p.days_talked || 0), 0);
   const n = (v) => Number(v || 0).toLocaleString("en-US");
   return {
-    caption: "the whole wavelength",
+    caption: "the whole thread",
     lines: [
-      "WAVELENGTH WRAPPED",
+      "ZETTEL WRAPPED",
       `${String(a.first_day || "").slice(0, 4)} > ${String(a.last_day || "").slice(0, 4)}`,
       `${n(a.total)} MESSAGES`,
       `${n(days)} DAYS IN TOUCH`,
@@ -227,7 +227,16 @@ async function boot() {
     quiet ? { years: [] } : (await fetch(`/api/onthisday?chat=${q}`)).json(),
   ]);
 
-  const dispatches = [statsDispatch(wrapped), ...echoDispatches(otd.years)];
+  // /api/wrapped answers { years: [], alltime: null } for a window with no
+  // density rows, and statsDispatch dereferences alltime immediately. The
+  // throw happened inside an un-caught async boot(), so the board did not
+  // fail — it simply never appeared, with no caption and no error. Guarding
+  // here also makes the "a quiet wire" branch below reachable at last: it was
+  // dead code, because statsDispatch either threw or returned an object.
+  const dispatches = [
+    ...(wrapped && wrapped.alltime ? [statsDispatch(wrapped)] : []),
+    ...echoDispatches(otd.years),
+  ];
   if (!dispatches.length) { captionEl.textContent = "a quiet wire"; return; }
 
   let index = 0;

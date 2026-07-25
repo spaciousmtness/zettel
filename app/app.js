@@ -665,6 +665,7 @@ async function openThread(identifier, threads) {
   state.candidates = [];
   state.resonances = [];
   chronology.reset();
+  waveform.reset();   // a new conversation is a cold track
   // the server's merge key for this thread — one function (db.py's
   // thread_key) decides it; the client just remembers what it was told
   state.chatKey = t?.key || identifier;

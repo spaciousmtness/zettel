@@ -63,6 +63,13 @@ export class ChronologyRail {
       if (this.dragging === null) this.hidePreview();
     });
     this.track.addEventListener("keydown", (event) => this.keydown(event));
+    // A keyboard scrub sets previewTs, and every other path that clears it is
+    // pointer-driven or needs an explicit Enter/Escape. Arrow the rail, then
+    // Tab away, and previewTs stays finite forever — setPosition() early-
+    // returns on it, so the 350ms playhead tick is silently dropped for the
+    // rest of the session and the rail never moves again. The landmark
+    // buttons already do exactly this on blur; the track did not.
+    this.track.addEventListener("blur", () => this.hidePreview());
     this.back.addEventListener("click", () => {
       if (!Number.isFinite(this.backTs)) return;
       const destination = this.backTs;
