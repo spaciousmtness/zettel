@@ -573,6 +573,8 @@ export class Waveform {
     this.warmUp();   // a deliberate scrub is engagement
     const id = e.pointerId;
     const committedTs = this.playheadTs;
+    // where the finger landed, so a DRAG can be told from a TAP below
+    const startX = e.clientX, startY = e.clientY;
     this.box.classList.add("is-scrubbing");
     try { this.box.setPointerCapture(id); } catch (err) { /* lifted */ }
     const move = (ev) => {
@@ -589,9 +591,16 @@ export class Waveform {
       }
       const r = this.box.getBoundingClientRect();
       const x = ev.clientX - r.left;
-      // a coarse tap near a mark, note, or chapter belongs to it — the
-      // finger meant the moment, not the millisecond under it
-      if (ev.pointerType !== "mouse" &&
+      // A coarse TAP near a mark, note or chapter belongs to it — the finger
+      // meant the moment, not the millisecond under it. But nothing here
+      // distinguished a tap from a drag, and tapNearestAnchor accepts any
+      // anchor within 28px in both axes, across marks (y 26), chapter titles
+      // (y 60) and note dots (y 51-82) — most of the strip. So a deliberate
+      // scrub across three years that happened to END near any of them was
+      // silently swallowed: no jump, no movement, no explanation. A tap has
+      // barely moved; anything else is a scrub and means where it landed.
+      const moved = Math.hypot(ev.clientX - startX, ev.clientY - startY);
+      if (ev.pointerType !== "mouse" && moved < 8 &&
           this.tapNearestAnchor(x, ev.clientY - r.top)) return;
       const ts = this.ts(x);
       this.setPlayhead(ts);

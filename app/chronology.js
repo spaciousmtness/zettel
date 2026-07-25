@@ -9,6 +9,8 @@ export class ChronologyRail {
   constructor(container, { onJump, onHover } = {}) {
     this.el = container;
     this.track = container.querySelector("#chronology-track");
+    // the focusable slider itself — see the note in index.html
+    this.slider = container.querySelector("#chronology-slider");
     this.canvas = container.querySelector("#chronology-canvas");
     this.marks = container.querySelector("#chronology-marks");
     this.position = container.querySelector("#chronology-position");
@@ -62,14 +64,14 @@ export class ChronologyRail {
     this.track.addEventListener("pointerleave", () => {
       if (this.dragging === null) this.hidePreview();
     });
-    this.track.addEventListener("keydown", (event) => this.keydown(event));
+    this.slider.addEventListener("keydown", (event) => this.keydown(event));
     // A keyboard scrub sets previewTs, and every other path that clears it is
     // pointer-driven or needs an explicit Enter/Escape. Arrow the rail, then
     // Tab away, and previewTs stays finite forever — setPosition() early-
     // returns on it, so the 350ms playhead tick is silently dropped for the
     // rest of the session and the rail never moves again. The landmark
     // buttons already do exactly this on blur; the track did not.
-    this.track.addEventListener("blur", () => this.hidePreview());
+    this.slider.addEventListener("blur", () => this.hidePreview());
     this.back.addEventListener("click", () => {
       if (!Number.isFinite(this.backTs)) return;
       const destination = this.backTs;
@@ -116,8 +118,8 @@ export class ChronologyRail {
       this.f1 = Math.max(
         Date.parse(`${this.days[this.days.length - 1].day}T23:59:59`) / 1000,
         this.f0 + DAY);
-      this.track.setAttribute("aria-valuemin", String(Math.round(this.f0)));
-      this.track.setAttribute("aria-valuemax", String(Math.round(this.f1)));
+      this.slider.setAttribute("aria-valuemin", String(Math.round(this.f0)));
+      this.slider.setAttribute("aria-valuemax", String(Math.round(this.f1)));
     }
     this.draw();
   }
@@ -417,7 +419,7 @@ export class ChronologyRail {
     const top = Math.max(8, Math.min(yy - height / 2,
       this.track.clientHeight - height - 8));
     this.preview.style.top = `${top}px`;
-    this.track.setAttribute("aria-valuetext", this.dateLabel(ts));
+    this.slider.setAttribute("aria-valuetext", this.dateLabel(ts));
   }
 
   hidePreview() {
@@ -434,8 +436,8 @@ export class ChronologyRail {
     this.position.hidden = !visible;
     if (!visible) return;
     this.position.style.top = `${this.y(this.currentTs)}px`;
-    this.track.setAttribute("aria-valuenow", String(Math.round(this.currentTs)));
-    this.track.setAttribute("aria-valuetext", this.dateLabel(this.currentTs));
+    this.slider.setAttribute("aria-valuenow", String(Math.round(this.currentTs)));
+    this.slider.setAttribute("aria-valuetext", this.dateLabel(this.currentTs));
   }
 
   commit(ts, rowid = null) {

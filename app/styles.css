@@ -43,7 +43,12 @@ button.quiet {
 button.quiet:hover { text-decoration-color: var(--umber); color: var(--ink); }
 button:focus-visible, select:focus-visible, input:focus-visible,
 [tabindex]:focus-visible {
-  outline: 2px solid var(--amber); outline-offset: 2px;
+  /* --sienna, not --amber. The 2px offset puts this ring on the PARENT's
+     paper, and amber measured 2.75:1 on vellum, 2.70:1 on plate and 2.89:1
+     on bone — all under the 3:1 floor for a focus indicator, in the palette
+     the app ships in. (Calm mode remaps amber and passed, which is why this
+     survived: it only failed in daylight.) sienna clears 4.6:1 everywhere. */
+  outline: 2px solid var(--sienna); outline-offset: 2px;
 }
 
 /* ---- ground: header / stream / handle ---- */
@@ -97,11 +102,15 @@ main { display: flex; flex: 1; min-height: 0; position: relative; }
   touch-action: none; user-select: none; cursor: ns-resize;
 }
 #chronology-track:focus-visible { outline-offset: -3px; }
-#chronology-canvas, #chronology-marks {
+#chronology-canvas, #chronology-marks, #chronology-slider {
   position: absolute; inset: 0; width: 100%; height: 100%;
 }
 #chronology-canvas { pointer-events: none; }
 #chronology-marks { pointer-events: none; }
+/* the slider is the focusable surface, but the TRACK still owns the pointer:
+   scrubbing handlers live there, so this must not intercept them */
+#chronology-slider { pointer-events: none; }
+#chronology-slider:focus-visible { outline-offset: -3px; }
 #chronology-position {
   position: absolute; left: 8px; width: 42px; height: 2px;
   transform: translateY(-1px); background: var(--ink);
@@ -384,6 +393,13 @@ body.calm .mark-halo, body.calm .mark-hot, body.calm .msg.pinned::after,
 body.calm .msg.ember::before, body.calm .msg.pinback::before,
 body.calm .msg.resurfaced::before {
   animation: none; opacity: .22;
+}
+/* .msg.arriving animates outline and background over 4.2s; .arrival-signal
+   translates by 8px. Both are real motion on a panel that ghosts, and both
+   were in the reduced-motion list and not this one — the same drift. The
+   outline and the glyph already carry "this just arrived" without moving. */
+body.calm .msg.arriving, body.calm .arrival-signal.showing {
+  animation: none;
 }
 @media (prefers-reduced-motion: reduce) {
   .mark-halo, .mark-hot, .msg.ember::before, .msg.pinned::after,
@@ -735,7 +751,7 @@ body.calm .wrapped-flap {
               transform var(--settle) var(--press);
 }
 #z-svg .z-tab { pointer-events: auto; cursor: pointer; }
-#z-svg .z-tab:focus-visible { outline: 2px solid var(--amber); outline-offset: 1px; }
+#z-svg .z-tab:focus-visible { outline: 2px solid var(--sienna); outline-offset: 1px; }
 #wave-svg {
   /* recedes to a whisper under a raised sheet — never fully gone, because
      the reading is only meaningful against the record it reads */
@@ -924,7 +940,12 @@ body.calm #play-btn { width: 56px; height: 56px; padding: 15px; }
 .ledger-new { color: var(--sienna); font-weight: bold; }
 .ledger-resurf-tag { color: var(--sienna); font-weight: bold; }
 .ledger-resurfaced { border-left: 2px solid var(--amber); padding-left: 32px; }
-.facet.has-new { color: var(--sienna); }
+/* Every other "new" state in this file pairs the hue with a form change —
+   .ledger-new and .ledger-resurf-tag go bold, .tapbacks .tb.pin goes bold,
+   .otd-marked takes a border. This one forgot, and under filter:grayscale(1)
+   sienna and graphite land 1.15:1 apart: no perceptible difference at all,
+   on the one control whose whole job is to say something changed. */
+.facet.has-new { color: var(--sienna); font-weight: bold; }
 
 /* the folder door (margins room): quiet, hairlined, never a box */
 .co-strip {
@@ -1308,7 +1329,12 @@ body.calm #chronology { flex-basis: 76px; }
 }
 .arrival-go:hover { background: var(--sienna); border-color: var(--sienna); }
 .arrival-go:focus-visible {
-  outline: 2px solid var(--amber); outline-offset: 2px;
+  /* --sienna, not --amber. The 2px offset puts this ring on the PARENT's
+     paper, and amber measured 2.75:1 on vellum, 2.70:1 on plate and 2.89:1
+     on bone — all under the 3:1 floor for a focus indicator, in the palette
+     the app ships in. (Calm mode remaps amber and passed, which is why this
+     survived: it only failed in daylight.) sienna clears 4.6:1 everywhere. */
+  outline: 2px solid var(--sienna); outline-offset: 2px;
 }
 
 /* e-ink: the plane arrives, it does not fade in. A cross-fade over a
