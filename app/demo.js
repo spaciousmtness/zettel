@@ -181,19 +181,25 @@
     return route + (qs ? "?" + qs : "");
   }
 
-  function isNumeric(v) {
-    return v !== "" && isFinite(Number(v));
-  }
-
   /* nearest: same route, same non-numeric params, closest numeric ones.
      Used by routes whose only free parameters are numbers (a `limit`, a
-     window bound) where an approximate window is better than an empty one. */
+     window bound) where an approximate window beats an empty one.
+
+     WHICH params are numeric comes from the manifest, never from parsing the
+     value: `chat=+15555550137` is a finite Number, so a value-sniffing
+     classifier files the thread under `nums`, the family key comes out empty,
+     and every unlisted limit misses. That bug shipped and the browser
+     receipt is what found it — window.__demo.misses is not decoration. */
   function nearest(m, route, sp) {
+    var numericFor = (m.numeric || {})[route] || [];
     var fixed = [], nums = {};
     sp.forEach(function (v, k) {
       if (VOLATILE[k]) return;
-      if (isNumeric(v)) nums[k] = Number(v);
-      else fixed.push([k, v]);
+      if (numericFor.indexOf(k) >= 0 && v !== "" && isFinite(Number(v))) {
+        nums[k] = Number(v);
+      } else {
+        fixed.push([k, v]);
+      }
     });
     fixed.sort(function (a, b) { return a[0] < b[0] ? -1 : 1; });
     var key = route + "|" + fixed.map(function (p) {

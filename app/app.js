@@ -579,7 +579,7 @@ async function openThread(identifier, threads) {
     fetch(`/api/summons?chat=${q}`).then((r) => r.json())
       .catch(() => ({ summons: [] })),
     // the Z layer's proposals — structure only, no model has read them
-    fetch(`/api/candidates?chat=${q}&limit=28`).then((r) => r.json())
+    fetch(`/api/candidates?chat=${q}&limit=40`).then((r) => r.json())
       .catch(() => ({ candidates: [] })),
     timeline.jumpToLatest(),
   ]);
