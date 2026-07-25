@@ -12,7 +12,11 @@ const FROM_NAME = "Zettel";
 
 export async function sendEmail(env, to, link) {
   if (!env.RESEND_API_KEY) {
-    if (env.ENVIRONMENT === "production") {
+    // Opt IN, never opt out. Gating on `ENVIRONMENT !== "production"` meant a
+    // deploy that forgot --env production silently chose the logging branch
+    // and wrote live sign-in secrets into the Worker log, where anyone with a
+    // tail session could complete the sign-in.
+    if (!env.ALLOW_CONSOLE_SECRETS) {
       throw new Error("no email sender configured");
     }
     console.log(`[dev] magic link for ${to}: ${link}`);
@@ -46,7 +50,7 @@ export async function sendEmail(env, to, link) {
 
 export async function sendSms(env, to, code) {
   if (!env.TWILIO_ACCOUNT_SID || !env.TWILIO_AUTH_TOKEN) {
-    if (env.ENVIRONMENT === "production") {
+    if (!env.ALLOW_CONSOLE_SECRETS) {
       throw new Error("no sms sender configured");
     }
     console.log(`[dev] code for ${to}: ${code}`);

@@ -33,17 +33,64 @@ export function randomToken() {
   return b64url(randomBytes(32));
 }
 
-/** A sortable, collision-resistant id: 48 bits of time, 80 bits of random.
- *  Time-ordered so primary-key inserts stay sequential and an id sorts
- *  chronologically without a second column. */
+// Crockford base32, minus I, L, O and U. Chosen for one property that
+// base64url does NOT have: this alphabet is in ASCII order, so comparing two
+// ids as STRINGS gives the same answer as comparing the bytes underneath.
+//
+// base64url looks sortable and isn't — its alphabet runs A-Z a-z 0-9 - _ by
+// index, but in ASCII the digits come before the letters and `-` before both,
+// so `zzz` sorts after `000` as a string while encoding a smaller number. An
+// id that is "sortable" only some of the time is worse than one that admits
+// it isn't: every consumer writes ORDER BY id and it silently works, until a
+// millisecond rolls the encoding into a different character class.
+const B32 = "0123456789ABCDEFGHJKMNPQRSTVWXYZ";
+
+/** A sortable, collision-resistant id — ULID layout: 48 bits of time, 80 bits
+ *  of randomness, base32 in an ASCII-ordered alphabet.
+ *
+ *  Time-ordered so primary-key inserts stay sequential, and so `ORDER BY id`
+ *  is chronological without a second column — which is also what makes it a
+ *  sound tiebreaker for the sync cursor's (updated_at, id) key. */
+let lastMs = -1;
+let lastTail = null;   // the 16 random symbols, as indices into B32
+
 export function newId() {
-  const t = Date.now();
-  const time = new Uint8Array(6);
-  for (let i = 5; i >= 0; i--) time[i] = (t / 2 ** (8 * (5 - i))) & 0xff;
-  const out = new Uint8Array(16);
-  out.set(time, 0);
-  out.set(randomBytes(10), 6);
-  return b64url(out);
+  const now = Date.now();
+
+  if (now === lastMs && lastTail) {
+    // MONOTONIC within the millisecond. Plain ULID leaves same-millisecond
+    // ordering to chance, and several rows of one batch land in the same
+    // millisecond routinely — so `ORDER BY id` would be *mostly* chronological,
+    // which is the worst kind. Increment the random tail as a base-32 number
+    // instead. 256 bytes over 32 symbols divides exactly, so `% 32` adds no
+    // modulo bias on the fresh path either.
+    let i = 15;
+    while (i >= 0 && lastTail[i] === 31) { lastTail[i] = 0; i--; }
+    if (i >= 0) lastTail[i]++;
+    // i < 0 means all 80 bits rolled over inside one millisecond, which needs
+    // ~10^24 ids/ms. Fall through with a fresh tail rather than pretend.
+    else lastTail = tail();
+  } else {
+    lastMs = now;
+    lastTail = tail();
+  }
+
+  let time = now;
+  const chars = new Array(26);
+  // 48 bits of time → 10 characters, most significant first
+  for (let i = 9; i >= 0; i--) {
+    chars[i] = B32[time % 32];
+    time = Math.floor(time / 32);
+  }
+  for (let i = 0; i < 16; i++) chars[10 + i] = B32[lastTail[i]];
+  return chars.join("");
+}
+
+function tail() {
+  const bytes = randomBytes(16);
+  // leave headroom so a monotonic run inside one millisecond cannot carry
+  // past the top of the space on its first increment
+  return Array.from(bytes, (b) => b % 31);
 }
 
 /** A six-digit code a person can read off a screen and type on a phone.

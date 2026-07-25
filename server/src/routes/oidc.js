@@ -176,15 +176,20 @@ export async function oidcCallback(request, env, provider) {
   const token = await createSession(env, accountId, request);
   await audit(env, { accountId, action: `signin.${provider}`, outcome: "ok",
                      meta: { created } });
-  return new Response(null, {
-    status: 303,
-    headers: {
-      Location: `${env.PUBLIC_ORIGIN}/app/`,
-      "Cache-Control": "no-store",
-      "Set-Cookie": [sessionCookie(token),
-                     `${STATE_COOKIE}=; Path=/auth; Max-Age=0`].join(", "),
-    },
+
+  // TWO cookies, TWO headers. Set-Cookie is not a comma-foldable header:
+  // RFC 6265 splits only on ";", so joining them yields ONE cookie named
+  // zettel_session whose trailing attributes are `Path=/auth; Max-Age=0` —
+  // a delete instruction for the session that was just created. Google and
+  // Apple sign-in looped forever and email was unaffected, because email
+  // sets one cookie. Headers.append keeps them separate.
+  const headers = new Headers({
+    Location: `${env.APP_ORIGIN}/app/`,
+    "Cache-Control": "no-store",
   });
+  headers.append("Set-Cookie", sessionCookie(token));
+  headers.append("Set-Cookie", `${STATE_COOKIE}=; Path=/auth; Max-Age=0`);
+  return new Response(null, { status: 303, headers });
 }
 
 async function exchange(env, provider, spec, code, verifier) {
@@ -257,7 +262,7 @@ function bounce(env, why) {
   return new Response(null, {
     status: 303,
     headers: {
-      Location: `${env.PUBLIC_ORIGIN}/?signin=${why}`,
+      Location: `${env.APP_ORIGIN}/?signin=${why}`,
       "Cache-Control": "no-store",
       "Set-Cookie": `${STATE_COOKIE}=; Path=/auth; Max-Age=0`,
     },

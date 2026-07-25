@@ -17,7 +17,17 @@
 -- portable across surfaces, and it is also what makes this table safe:
 -- (timeline, t0, t1) says "something was marked here" and nothing else.
 
-PRAGMA foreign_keys = ON;
+-- NOTE: no `PRAGMA foreign_keys = ON` here, though every ON DELETE CASCADE
+-- below depends on foreign keys being enforced.
+--
+-- D1's SQL authorizer REJECTS that pragma ("not authorized", code 7500), so a
+-- schema carrying it fails on its first statement and creates no tables at
+-- all — while node:sqlite, which the tests run on, accepts it happily. The
+-- suite would go green against a file that cannot be deployed.
+--
+-- D1 enforces foreign keys unconditionally, so nothing is lost. The test
+-- harness turns them on itself before loading this file, which is the only
+-- place the pragma can honestly live.
 
 -- ---- identity -------------------------------------------------------------
 

@@ -35,6 +35,11 @@ class Stmt {
 
 export function makeDb() {
   const db = new DatabaseSync(":memory:");
+  // D1 enforces foreign keys unconditionally; SQLite does not, and the pragma
+  // that would turn them on cannot live in schema.sql because D1's authorizer
+  // rejects it. So it lives HERE — without it the harness would be laxer than
+  // production and every ON DELETE CASCADE test would pass vacuously.
+  db.exec("PRAGMA foreign_keys = ON");
   db.exec(readFileSync(join(here, "..", "schema.sql"), "utf8"));
   return {
     prepare: (sql) => new Stmt(db, sql),
@@ -80,9 +85,13 @@ export function makeEnv(overrides = {}) {
     DB: makeDb(),
     RATE: makeKv(),
     ENVIRONMENT: "test",
-    PUBLIC_ORIGIN: "https://zettel.test",
+    // Two DIFFERENT origins, as in production. Making them one string is what
+    // let a magic link point at the static site and still pass its test.
+    PUBLIC_ORIGIN: "https://api.zettel.test",   // this Worker
+    APP_ORIGIN: "https://zettel.test",          // the front end
     ALLOWED_ORIGINS: "https://zettel.test",
     MAIL_FROM: "hello@zettel.test",
+    ALLOW_CONSOLE_SECRETS: "1",   // the dev senders log instead of delivering
     ...overrides,
   };
 }
@@ -99,14 +108,29 @@ export function get(path, headers = {}) {
   return new Request(`https://zettel.test${path}`, { method: "GET", headers });
 }
 
-/** The Set-Cookie value for one cookie name, as a browser would send it back. */
+/** The Set-Cookie value for one cookie name, as a browser would send it back.
+ *
+ *  Uses getSetCookie(), which returns the headers UNJOINED. The old version
+ *  read a single header and split it on "," — and that is precisely how a
+ *  response that comma-joined two Set-Cookie values looked correct here while
+ *  a real browser parsed it as one cookie with a delete instruction stapled
+ *  to the end. A harness that is more forgiving than a browser proves
+ *  nothing; this is the one place that has to be stricter. */
 export function cookieFrom(response, name) {
-  const raw = response.headers.get("Set-Cookie") || "";
-  const match = raw.split(",").map((s) => s.trim())
-    .find((s) => s.startsWith(`${name}=`));
+  const all = typeof response.headers.getSetCookie === "function"
+    ? response.headers.getSetCookie()
+    : [response.headers.get("Set-Cookie")].filter(Boolean);
+  const match = all.find((line) => String(line).startsWith(`${name}=`));
   if (!match) return null;
-  const value = match.split(";")[0].slice(name.length + 1);
+  const value = String(match).split(";")[0].slice(name.length + 1);
   return value || null;
+}
+
+/** Every Set-Cookie line, so a test can assert on how many there are. */
+export function setCookies(response) {
+  return typeof response.headers.getSetCookie === "function"
+    ? response.headers.getSetCookie()
+    : [response.headers.get("Set-Cookie")].filter(Boolean);
 }
 
 /** The dev senders log the secret rather than delivering it. Capturing that

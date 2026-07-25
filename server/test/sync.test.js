@@ -166,18 +166,71 @@ test("forgetting a timeline tombstones it and drops the ciphertext", async () =>
   assert.equal(other.items[0].deleted_at, null);
 });
 
-test("pull honours the since watermark", async () => {
+test("pull honours the full (updated_at, id) watermark", async () => {
   const env = makeEnv();
   const auth = await signIn(env, "+15550000137");
   await worker.fetch(post("/sync", { items: [mark()] }, auth), env);
 
   const all = await (await worker.fetch(get(`/sync?timeline=${TIMELINE}`, auth), env)).json();
-  const watermark = all.items[0].updated_at;
+  const row = all.items[0];
 
-  const nothingNew = await (await worker.fetch(
-    get(`/sync?timeline=${TIMELINE}&since=${watermark}`, auth), env)).json();
+  const nothingNew = await (await worker.fetch(get(
+    `/sync?timeline=${TIMELINE}&since=${row.updated_at}&since_id=${row.id}`,
+    auth), env)).json();
   assert.deepEqual(nothingNew.items, []);
   assert.equal(nothingNew.cursor, null);
+});
+
+test("a half watermark re-delivers rather than skipping", async () => {
+  // `since` without `since_id` is the old client's cursor. It must fail SAFE:
+  // re-sending a row the client already has is idempotent; skipping one is
+  // silent data loss.
+  const env = makeEnv();
+  const auth = await signIn(env, "+15550000137");
+  await worker.fetch(post("/sync", { items: [mark()] }, auth), env);
+  const all = await (await worker.fetch(get(`/sync?timeline=${TIMELINE}`, auth), env)).json();
+
+  const again = await (await worker.fetch(
+    get(`/sync?timeline=${TIMELINE}&since=${all.items[0].updated_at}`, auth), env)).json();
+  assert.equal(again.items.length, 1, "duplicate, never a drop");
+});
+
+test("a full page of rows sharing one second paginates completely", async () => {
+  // The bug this exists for: push() stamps a whole batch with one `now`, so
+  // hundreds of rows share an `updated_at`. A cursor of updated_at alone asks
+  // the next page for `> T` and silently skips every remaining row AT T. One
+  // legal push made 300 marks permanently invisible to a second device.
+  const env = makeEnv();
+  const auth = await signIn(env, "+15550000137");
+
+  const TOTAL = 300, PAGE = 100;
+  const items = Array.from({ length: TOTAL }, (_, i) =>
+    mark({ id: `m${String(i).padStart(4, "0")}` }));
+  const pushed = await worker.fetch(post("/sync", { items }, auth), env);
+  assert.equal((await pushed.json()).accepted, TOTAL);
+
+  // they really do share a second — otherwise this test proves nothing
+  const stamps = new Set(env.DB._raw
+    .prepare("SELECT DISTINCT updated_at FROM annotation").all()
+    .map((r) => r.updated_at));
+  assert.equal(stamps.size, 1, "the whole batch should carry one timestamp");
+
+  const seen = new Set();
+  let cursor = null, pages = 0;
+  do {
+    const qs = new URLSearchParams({ timeline: TIMELINE, limit: String(PAGE) });
+    if (cursor) {
+      qs.set("since", String(cursor.since));
+      qs.set("since_id", cursor.since_id);
+    }
+    const page = await (await worker.fetch(get(`/sync?${qs}`, auth), env)).json();
+    for (const row of page.items) seen.add(row.id);
+    cursor = page.cursor;
+    pages++;
+    assert.ok(pages < 20, "pagination should terminate");
+  } while (cursor);
+
+  assert.equal(seen.size, TOTAL, "every row must survive pagination");
 });
 
 test("a batch over the cap is refused whole", async () => {

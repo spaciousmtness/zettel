@@ -7,7 +7,7 @@
   "scripts": {
     "test": "node --test 'test/*.test.js'",
     "dev": "wrangler dev",
-    "deploy": "wrangler deploy",
+    "deploy": "wrangler deploy --env production",
     "db:local": "wrangler d1 execute zettel --local --file=./schema.sql",
     "db:remote": "wrangler d1 execute zettel --remote --file=./schema.sql"
   },

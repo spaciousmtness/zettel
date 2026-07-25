@@ -1,7 +1,7 @@
 import { newId, otpCode, randomToken, sha256Hex, timingSafeEqual }
   from "../lib/crypto.js";
 import { normalizeEmail, normalizePhone } from "../lib/validate.js";
-import { guardSend } from "../lib/ratelimit.js";
+import { guardSend, sentRecently } from "../lib/ratelimit.js";
 import { json, fail, readJson } from "../lib/respond.js";
 import { accountForIdentity, audit } from "../lib/accounts.js";
 import { createSession, sessionCookie, currentAccount } from "../lib/session.js";
@@ -10,6 +10,11 @@ import { sendEmail, sendSms } from "../lib/deliver.js";
 const CODE_TTL = 10 * 60;        // a code you have to go and find on a phone
 const LINK_TTL = 15 * 60;
 const MAX_ATTEMPTS = 5;
+// How many codes one address or number may be sent per hour. Counted in
+// D1, not KV — see ratelimit.js: an eventually-consistent counter cannot
+// enforce this, and the failure mode is a stranger's phone ringing all night.
+const SENDS_PER_HOUR = 5;
+const SEND_WINDOW = 3600;
 
 // The same answer whether or not the address exists.
 //
@@ -27,10 +32,18 @@ export async function emailStart(request, env) {
   const email = normalizeEmail(body?.email);
   if (!email) return fail(400, "bad_email", "that address doesn't look complete");
 
-  const gate = await guardSend(env, request, `email:${email}`);
+  // exact, in SQL — the count of codes already sent to THIS destination
+  if (await sentRecently(env, "email", email, SEND_WINDOW) >= SENDS_PER_HOUR) {
+    await audit(env, { action: "signin.email.start", outcome: "denied",
+                       meta: { reason: "destination" } });
+    return fail(429, "slow_down", "too many requests — try again shortly",
+      { "Retry-After": "3600" });
+  }
+  // approximate, in KV — a floor under spraying from one host
+  const gate = await guardSend(env, request);
   if (!gate.ok) {
     await audit(env, { action: "signin.email.start", outcome: "denied",
-                       meta: { reason: "rate" } });
+                       meta: { reason: "source" } });
     return fail(429, "slow_down", "too many requests — try again shortly",
       { "Retry-After": String(gate.retryAfter || 60) });
   }
@@ -44,6 +57,9 @@ export async function emailStart(request, env) {
     .bind(newId(), email, await sha256Hex(secret), now, now + LINK_TTL)
     .run();
 
+  // PUBLIC_ORIGIN, not APP_ORIGIN: this URL has to hit THIS Worker. Pointed
+  // at the static site it lands on a 404 and email sign-in cannot complete
+  // for anyone — the two origins are not the same host.
   const link = `${env.PUBLIC_ORIGIN}/auth/email/callback` +
     `?t=${encodeURIComponent(secret)}&e=${encodeURIComponent(email)}`;
   await sendEmail(env, email, link);
@@ -88,10 +104,18 @@ export async function phoneStart(request, env) {
       "that number needs a country code — like +1 555 000 0000");
   }
 
-  const gate = await guardSend(env, request, `phone:${phone}`);
+  // exact, in SQL — the count of codes already sent to THIS destination
+  if (await sentRecently(env, "phone", phone, SEND_WINDOW) >= SENDS_PER_HOUR) {
+    await audit(env, { action: "signin.phone.start", outcome: "denied",
+                       meta: { reason: "destination" } });
+    return fail(429, "slow_down", "too many requests — try again shortly",
+      { "Retry-After": "3600" });
+  }
+  // approximate, in KV — a floor under spraying from one host
+  const gate = await guardSend(env, request);
   if (!gate.ok) {
     await audit(env, { action: "signin.phone.start", outcome: "denied",
-                       meta: { reason: "rate" } });
+                       meta: { reason: "source" } });
     return fail(429, "slow_down", "too many requests — try again shortly",
       { "Retry-After": String(gate.retryAfter || 60) });
   }
@@ -185,10 +209,13 @@ async function consumeChallenge(env, kind, value, secret) {
   return { ok: true };
 }
 
+/** Send the reader back to the FRONT END. Everything this is called with —
+ *  /app/, /?signin=… — is a page, not a route on this Worker, so it must
+ *  never be built from PUBLIC_ORIGIN. */
 function redirectTo(env, path, extra = {}) {
   return new Response(null, {
     status: 303,
-    headers: { Location: `${env.PUBLIC_ORIGIN}${path}`,
+    headers: { Location: `${env.APP_ORIGIN}${path}`,
                "Cache-Control": "no-store", ...extra },
   });
 }

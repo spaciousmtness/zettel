@@ -36,29 +36,38 @@ export async function pull(request, env) {
   const url = new URL(request.url);
   const timeline = normalizeTimeline(url.searchParams.get("timeline"));
   const since = Number(url.searchParams.get("since")) || 0;
+  // The other half of the watermark. `updated_at` is whole seconds and push()
+  // stamps an entire batch with one `now`, so hundreds of rows routinely share
+  // a second — and a cursor of `updated_at` alone asks the next page for
+  // `> T`, silently skipping every remaining row AT T. One legal 500-row push
+  // was enough to make 300 marks permanently invisible to a second device,
+  // with no error anywhere. The sort key is (updated_at, id); the cursor has
+  // to be the same pair or it is not a cursor.
+  const sinceId = String(url.searchParams.get("since_id") ?? "");
   const limit = Math.min(Math.max(Number(url.searchParams.get("limit")) || 200, 1),
                          MAX_BATCH);
 
-  const bound = [who.account_id];
+  const bound = [who.account_id, since, since, sinceId];
   let sql =
     `SELECT id, timeline, kind, t0, t1, y, body_ct, body_nonce,
             revision, updated_at, deleted_at
        FROM annotation
-      WHERE account_id = ? AND updated_at > ?`;
-  bound.push(since);
+      WHERE account_id = ?
+        AND (updated_at > ? OR (updated_at = ? AND id > ?))`;
   if (timeline) { sql += ` AND timeline = ?`; bound.push(timeline); }
-  // (updated_at, id) so a page boundary that lands mid-second cannot drop a
-  // row: the watermark the client sends back is the last row it actually saw.
   sql += ` ORDER BY updated_at, id LIMIT ?`;
   bound.push(limit);
 
   const rows = await env.DB.prepare(sql).bind(...bound).all();
   const items = rows.results || [];
+  const last = items[items.length - 1];
   return json({
     items,
     // null when the page was not full — the client stops rather than
     // spinning on a watermark that never advances
-    cursor: items.length === limit ? items[items.length - 1].updated_at : null,
+    cursor: items.length === limit && last
+      ? { since: last.updated_at, since_id: last.id }
+      : null,
   });
 }
 

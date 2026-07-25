@@ -5,14 +5,34 @@ compatibility_date = "2026-07-01"
 # WebCrypto and the fetch API, which keeps the runtime surface small — and a
 # small runtime surface is the cheapest thing you will ever do for an audit.
 
+# ---- two origins, and they are NOT the same ---------------------------------
+# The front end is a static site (GitHub Pages today, zettel.ink tomorrow).
+# The API is this Worker, at its own origin. A single "public origin" cannot
+# serve both, and collapsing them is silently fatal: the magic link in a
+# sign-in email would point at the static site, which has no /auth route, and
+# every OIDC redirect_uri would 404.
+#
+#   PUBLIC_ORIGIN — where THIS WORKER answers. Callback URLs and OAuth
+#                   redirect_uri values must resolve here.
+#   APP_ORIGIN    — where the front end lives. Post-sign-in redirects and
+#                   ?signin= bounces go here.
+#
+# In local dev they differ too (8787 vs 8788), which is what keeps the
+# distinction honest while developing.
+
 [vars]
 ENVIRONMENT = "development"
 PUBLIC_ORIGIN = "http://localhost:8787"
+APP_ORIGIN = "http://localhost:8788"
 # Origins allowed to send credentialed requests. Never "*": the browser
 # refuses a wildcard with credentials anyway, and a reflected origin plus
 # Allow-Credentials is the classic route to account takeover.
 ALLOWED_ORIGINS = "http://localhost:8788"
 MAIL_FROM = "hello@zettel.ink"
+# Opt IN to logging sign-in secrets to the console. Without this, an
+# unconfigured sender throws instead. Gating on the ABSENCE of "production"
+# was backwards: a misconfigured deploy silently chose the logging branch.
+ALLOW_CONSOLE_SECRETS = "1"
 
 [[d1_databases]]
 binding = "DB"
@@ -24,13 +44,32 @@ binding = "RATE"
 id = "set-me-after-wrangler-kv-namespace-create"
 
 # ---- production ------------------------------------------------------------
+# Bindings are NOT inherited by a named environment. The moment
+# [env.production.vars] overrides one non-inheritable key, every other
+# non-inheritable key must be re-declared here too — d1_databases and
+# kv_namespaces included. Omit them and `wrangler deploy --env production`
+# succeeds, then every request throws on `env.DB.prepare`, and env.RATE being
+# undefined makes the rate limiter fail open without saying a word.
+
 [env.production.vars]
 ENVIRONMENT = "production"
-PUBLIC_ORIGIN = "https://zettel.ink"
+PUBLIC_ORIGIN = "https://api.zettel.ink"
+APP_ORIGIN = "https://zettel.ink"
 ALLOWED_ORIGINS = "https://zettel.ink"
 MAIL_FROM = "hello@zettel.ink"
+# absent on purpose — production must never log a secret
 
-# Secrets are NEVER in this file. Set each with `wrangler secret put NAME`:
+[[env.production.d1_databases]]
+binding = "DB"
+database_name = "zettel"
+database_id = "set-me-after-wrangler-d1-create"
+
+[[env.production.kv_namespaces]]
+binding = "RATE"
+id = "set-me-after-wrangler-kv-namespace-create"
+
+# Secrets are NEVER in this file. Set each with
+# `wrangler secret put NAME --env production`:
 #
 #   RESEND_API_KEY        email delivery
 #   TWILIO_ACCOUNT_SID    sms delivery

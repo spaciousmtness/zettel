@@ -20,7 +20,7 @@ export async function requestAccess(request, env) {
   // person who typed their number without a country code.
   const phone = normalizePhone(body?.phone);
 
-  const gate = await guardSend(env, request, `access:${email}`);
+  const gate = await guardSend(env, request);
   if (!gate.ok) {
     return fail(429, "slow_down", "too many requests — try again shortly",
       { "Retry-After": String(gate.retryAfter || 60) });

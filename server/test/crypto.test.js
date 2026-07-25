@@ -64,11 +64,43 @@ test("sha256Hex is stable and 64 hex chars", async () => {
   assert.match(a, /^[a-f0-9]{64}$/);
 });
 
-test("newId is sortable by creation order", async () => {
+test("newId is sortable by creation order, as a STRING", async () => {
+  // The property that matters, and the one base64url quietly lacked: string
+  // comparison must agree with time. `ORDER BY id` in SQL is a string compare.
   const first = newId();
   await new Promise((r) => setTimeout(r, 3));
   const second = newId();
   assert.ok(first < second, `${first} should sort before ${second}`);
+});
+
+test("newId sorts correctly across a character-class boundary", async () => {
+  // The flake that exposed the bug: base64url's alphabet is not in ASCII
+  // order, so whether two ids compared correctly depended on which characters
+  // the millisecond happened to land on. 200 consecutive ids, in order, every
+  // time — a loop long enough to cross the boundaries that used to break it.
+  const ids = [];
+  for (let i = 0; i < 200; i++) {
+    ids.push(newId());
+    await new Promise((r) => setTimeout(r, 1));
+  }
+  const sorted = [...ids].sort();
+  assert.deepEqual(ids, sorted, "string order must match creation order");
+});
+
+test("newId is monotonic INSIDE a millisecond too", () => {
+  // Several rows of one batch land in the same millisecond routinely. Plain
+  // ULID leaves their order to chance, which makes `ORDER BY id` *mostly*
+  // chronological — the worst kind. 10,000 with no clock advance at all.
+  const ids = Array.from({ length: 10000 }, () => newId());
+  const sorted = [...ids].sort();
+  assert.deepEqual(ids, sorted, "a batch in one millisecond must still order");
+  assert.equal(new Set(ids).size, ids.length, "and must not collide");
+});
+
+test("newId uses only ASCII-ordered characters", () => {
+  for (let i = 0; i < 500; i++) {
+    assert.match(newId(), /^[0-9A-HJKMNP-TV-Z]{26}$/);
+  }
 });
 
 test("newId and randomToken do not repeat", () => {

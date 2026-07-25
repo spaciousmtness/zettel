@@ -257,3 +257,93 @@ test("a malformed body is a 400, never a 500", async () => {
   }), env);
   assert.equal(res.status, 400);
 });
+
+// ---- the two origins, which are not the same host -------------------------
+
+test("the magic link points at the API, the landing points at the app", async () => {
+  // Collapsing these into one PUBLIC_ORIGIN sent the sign-in link to the
+  // static site, which has no /auth route. Email sign-in was impossible for
+  // everyone, and the test suite was green because the harness made both
+  // origins the same string.
+  const env = makeEnv();
+  const cap = captureConsole();
+  await worker.fetch(post("/auth/email/start", { email: "a@example.com" }), env);
+  const line = cap.lines[cap.lines.length - 1];
+  const secret = cap.lastSecret();
+  cap.restore();
+
+  assert.match(line, /https:\/\/api\.zettel\.test\/auth\/email\/callback/,
+    "the link has to resolve on the Worker");
+
+  const landed = await worker.fetch(get(
+    `/auth/email/callback?t=${encodeURIComponent(secret)}&e=a%40example.com`), env);
+  assert.equal(landed.headers.get("Location"), "https://zettel.test/app/",
+    "the landing has to resolve on the front end");
+});
+
+test("a bounced sign-in returns to the front end, not the API", async () => {
+  const env = makeEnv();
+  const bounced = await worker.fetch(
+    get("/auth/email/callback?t=nope&e=a%40example.com"), env);
+  assert.equal(bounced.status, 303);
+  assert.match(bounced.headers.get("Location"), /^https:\/\/zettel\.test\/\?signin=/);
+});
+
+// ---- delivery ------------------------------------------------------------
+
+test("without ALLOW_CONSOLE_SECRETS an unconfigured sender refuses to pretend", async () => {
+  // Gating the logging branch on `ENVIRONMENT !== "production"` was backwards:
+  // a deploy that forgot --env production silently wrote live sign-in links
+  // into the Worker log, where a tail session could complete the sign-in.
+  const env = makeEnv({ ALLOW_CONSOLE_SECRETS: undefined });
+  const cap = captureConsole();
+  const res = await worker.fetch(post("/auth/email/start", { email: "a@example.com" }), env);
+  cap.restore();
+  assert.equal(res.status, 500, "better a visible failure than a silent no-op");
+  assert.equal(cap.lastSecret(), null, "and nothing on the console");
+});
+
+// ---- the per-destination cap is exact, and counted in SQL ------------------
+
+test("the send cap counts real challenge rows, not a cached number", async () => {
+  const env = makeEnv();
+  const phone = "+15550000137";
+  const cap = captureConsole();
+  for (let i = 0; i < 5; i++) {
+    await worker.fetch(post("/auth/phone/start", { phone }), env);
+  }
+  const blocked = await worker.fetch(post("/auth/phone/start", { phone }), env);
+  cap.restore();
+  assert.equal(blocked.status, 429);
+
+  const rows = env.DB._raw.prepare(
+    "SELECT COUNT(*) AS n FROM challenge WHERE value = ?").all(phone)[0];
+  assert.equal(rows.n, 5, "the evidence of the sends IS the rate limit");
+});
+
+test("the cap is per destination — one victim cannot mute another number", async () => {
+  const env = makeEnv();
+  const cap = captureConsole();
+  for (let i = 0; i < 5; i++) {
+    await worker.fetch(post("/auth/phone/start", { phone: "+15550000137" }), env);
+  }
+  const other = await worker.fetch(
+    post("/auth/phone/start", { phone: "+15550000188" }), env);
+  cap.restore();
+  assert.equal(other.status, 200);
+});
+
+test("the cap survives an unbound KV — it does not live there", async () => {
+  // RATE unbound is a real production state (a named environment that forgets
+  // to re-declare the binding). The KV limiter fails open by design; the
+  // destination cap must NOT, because that one is protecting a phone bill.
+  const env = makeEnv({ RATE: undefined });
+  const phone = "+15550000137";
+  const cap = captureConsole();
+  for (let i = 0; i < 5; i++) {
+    await worker.fetch(post("/auth/phone/start", { phone }), env);
+  }
+  const blocked = await worker.fetch(post("/auth/phone/start", { phone }), env);
+  cap.restore();
+  assert.equal(blocked.status, 429);
+});

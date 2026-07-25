@@ -47,13 +47,38 @@ export function clientIp(request) {
     || "unknown";
 }
 
-/** Two limits on every credential-sending route: one per destination (you
- *  cannot be spammed with codes) and one per source (a script cannot spray
- *  the whole address space from one host). Both must pass. */
-export async function guardSend(env, request, destination) {
-  const ip = clientIp(request);
-  const perDestination = await rateLimit(env, `dst:${destination}`,
-    { limit: 5, windowSec: 3600 });
-  if (!perDestination.ok) return perDestination;
-  return rateLimit(env, `ip:${ip}`, { limit: 30, windowSec: 3600 });
+/** The per-destination cap, counted in SQL rather than KV.
+ *
+ *  This one has to be EXACT, and KV cannot be. A `get` may be served from the
+ *  colo cache for up to 60 seconds after a `put`, so with a one-hour window
+ *  and a limit of five, every request in the first minute reads the same
+ *  stale count. A script pointed at one victim's number for thirty seconds
+ *  sails past the cap and Twilio sends thousands of messages — the precise
+ *  attack the limiter exists to stop, and the in-memory test KV could never
+ *  have shown it.
+ *
+ *  D1 is strongly consistent, and we are already writing a `challenge` row
+ *  per send, so the count is free and correct: the evidence of the sends IS
+ *  the rate limit. */
+export async function sentRecently(env, kind, value, windowSec) {
+  if (!env.DB) return 0;
+  const since = Math.floor(Date.now() / 1000) - windowSec;
+  const row = await env.DB.prepare(
+    `SELECT COUNT(*) AS n FROM challenge
+      WHERE kind = ? AND value = ? AND created_at > ?`)
+    .bind(kind, value, since).first();
+  return Number(row?.n) || 0;
+}
+
+/** Two limits on every credential-sending route.
+ *
+ *  Per DESTINATION — exact, counted in D1 by the caller, because approximate
+ *  is not good enough when the failure mode is somebody's phone ringing all
+ *  night and a bill.
+ *
+ *  Per SOURCE — approximate is fine, and KV is the cheap way to get it: this
+ *  only has to make spraying the whole address space from one host expensive,
+ *  and a few extra attempts at a window boundary cost nothing. */
+export async function guardSend(env, request) {
+  return rateLimit(env, `ip:${clientIp(request)}`, { limit: 30, windowSec: 3600 });
 }
