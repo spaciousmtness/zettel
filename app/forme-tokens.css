@@ -1,0 +1,57 @@
+/* FORME v0.1 — drop-in tokens for the DC-1 grammar simulator.
+   Rules: never hardcode a color, z-index, duration, or alpha in components.
+   All meaning-bearing distinctions must survive filter: grayscale(1). */
+:root {
+  /* paper ramp */
+  --bone:#faf8f2; --vellum:#f6f2e9; --plate:#f4f0e7; --greige:#efe9db; --deckle:#c9c2b2;
+  /* ink ramp */
+  --ink:#1c1a15; --graphite:#57514a; --slate:#6f685c; --umber:#8a8376; --hairline:#d8d1c1;
+  /* the one hue: amber = agency */
+  --amber:#e8720c; --sienna:#b34d00;
+  --tint:rgba(232,114,12,.08); --ember:rgba(232,114,12,.34);
+  /* transport memory: blue whispers iMessage, while dot + ring carry it
+     on grayscale LivePaper; blue never means agency or selection */
+  --imessage-blue:#397ca8; --imessage-halo:rgba(57,124,168,.24);
+  /* confidence alpha — the ONLY legal opacity stops for content */
+  --a-sketch:.35; --a-proof:.60; --a-pressproof:.85; --a-ink:1;
+  /* semantic depth — numeric z-index is banned in components */
+  --z-bed:0; --z-margin:50; --z-forme:100; --z-proposal:200; --z-surfaced:300; --z-consent:400;
+  /* the ONE living tempo. Every breathing thing uses this token — four
+     competing tempos (2s, 4.2s, 5s) were running while the sanctioned 2.6s
+     ran on nothing. A single ember means a single rhythm. */
+  --ember-tempo:2.6s;
+  /* press mechanics */
+  --kiss:140ms; --settle:260ms; --pull:420ms;
+  --press:cubic-bezier(.2,.8,.2,1);
+  /* space */
+  --s1:6px; --s2:12px; --s3:18px; --s4:28px; --s5:44px; --s6:68px;
+}
+/* amber backlight mode (DC-1 evening palette) — a body class, never per-element */
+body.amber {
+  /* Warm paper, NOT tan. The old ramp sat around 28% saturation in the
+     yellows (#f0dfbd), which read as khaki — and since calm mode always
+     turns this on, every DC-1 demo was tan. Desaturated hard while keeping
+     a warm cast, so it still reads as evening paper rather than daylight.
+     ASSUMED, not measured: the DC-1's amber front-light adds its own warm
+     tint, so a neutral-warm sheet should land right under it where a tan
+     sheet double-counted. Verify on the panel. */
+  --bone:#f7f1e6; --vellum:#f2ebdd; --plate:#eee6d6; --greige:#e8dfcd;
+  --deckle:#cabfa9; --hairline:#dad2c2; --ink:#221d14; --slate:#6b6152; --umber:#8a8071;
+  --imessage-blue:#446f87; --imessage-halo:rgba(68,111,135,.28);
+  /* the hue has to move with the paper. Left at day values, day-amber sat on
+     an amber ground and the contrast collapsed into a washed comb. */
+  --amber:#b34d00; --sienna:#8f3d00;
+  --tint:rgba(179,77,0,.10); --ember:rgba(179,77,0,.34);
+}
+/* lift without light: the offset edge (misregistration), never box-shadow */
+.lifted { border:1px solid var(--deckle); box-shadow:none; position:relative; }
+.lifted::after { content:""; position:absolute; inset:-1px; transform:translate(1px,1px);
+  border:1px solid var(--deckle); border-radius:inherit; pointer-events:none; z-index:-1; }
+/* the sole sanctioned loop */
+@keyframes breathe { 0%,100%{opacity:var(--ember-lo,.34)} 50%{opacity:calc(var(--ember-lo,.34) + .1)} }
+.ember-breathe { animation: breathe var(--ember-tempo) ease-in-out infinite; }
+@media (prefers-reduced-motion: reduce) {
+  * { transition:none !important; animation:none !important; }
+}
+/* halftone region marker (meaning without hue): apply as SVG pattern —
+   6px grid, r=1.8 dot, ink on greige. Keep an <svg><defs> copy per document. */

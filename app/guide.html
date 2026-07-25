@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Zettel — the guide</title>
+<link rel="stylesheet" href="forme-tokens.css">
+<style>
+* { box-sizing: border-box; margin: 0; }
+body {
+  background: var(--vellum); color: var(--ink);
+  font-family: Georgia, 'Iowan Old Style', serif;
+  font-size: 17px; line-height: 1.55; padding: 7vh 24px 12vh;
+}
+.mono { font-family: ui-monospace, Menlo, monospace; font-size: 11.5px;
+        letter-spacing: .08em; color: var(--slate); }
+main { max-width: 42rem; margin: 0 auto; }
+h1 { font-size: 34px; font-weight: normal; }
+h1 em { font-style: italic; color: var(--sienna); }
+.lede { font-size: 19px; color: var(--graphite); margin: 10px 0 40px; }
+h2 { font-size: 15px; font-weight: normal; font-style: italic;
+     color: var(--slate); margin: 44px 0 6px;
+     border-bottom: 1px solid var(--hairline); padding-bottom: 6px; }
+dl { margin: 0; }
+dt { margin-top: 18px; }
+dt .k {
+  display: inline-block; border: 1px solid var(--deckle); border-radius: 3px;
+  background: var(--bone); padding: 1px 7px; margin-left: 6px;
+  font-family: ui-monospace, Menlo, monospace; font-size: 11.5px;
+  color: var(--graphite);
+}
+dd { margin: 3px 0 0; color: var(--graphite); max-width: 38rem; }
+.vow { border: 1.5px solid var(--ink); border-radius: 4px;
+       background: var(--bone); padding: 18px 22px; margin: 48px 0 0; }
+a { color: var(--sienna); }
+.back { display: inline-block; margin-bottom: 28px; }
+#version-footer { margin: 20px 0 0; color: var(--slate); }
+</style>
+</head>
+<body>
+<main>
+  <a class="back mono" href="./">← back to the thread</a>
+  <h1>Zettel <em>· the guide</em></h1>
+  <p class="lede">Your most important conversation is already written.
+  This is the instrument that plays it. Three verbs: communicate,
+  ruminate, execute.</p>
+
+  <h2>move — travel the timeline</h2>
+  <dl>
+    <dt>The layer <span class="k">t</span></dt>
+    <dd>Everything summons from below and recedes with
+        <span class="k">esc</span>. The ground stays a calm thread.</dd>
+    <dt>The waveform</dt>
+    <dd>The whole conversation as a track — your voice above the line,
+        theirs below. Click or drag anywhere to jump. Mouse-wheel zooms
+        time around the cursor; “all” restores.</dd>
+    <dt>Play <span class="k">space</span></dt>
+    <dd>The conversation plays itself, skipping silences longer than a
+        day. The needle crosses the track; the played years turn amber.</dd>
+    <dt>Go to a date <span class="k">g</span> · ends of history
+        <span class="k">home</span><span class="k">end</span></dt>
+    <dd>A month-and-year grid, one click to land.</dd>
+    <dt>Move by message <span class="k">j</span><span class="k">k</span> ·
+        by pin <span class="k">n</span><span class="k">p</span></dt>
+    <dd>Arrows work too. Selection is where the quiet buttons appear.</dd>
+  </dl>
+
+  <h2>mark — leave traces</h2>
+  <dl>
+    <dt>The dialect: 📌 decisions · 🔥 ideas · ❓ questions ·
+        🩷 keepsakes · ✅ done · 👍 agreed</dt>
+    <dd>Send them in iMessage like you already do — inline or as a
+        tapback — and they become glowing jump points on the waveform,
+        each a distinct shape (diamond, circle, triangle, heart, tick,
+        square) so they read even in pure grayscale. The whole vocabulary
+        iMessage left on the table, made navigable.</dd>
+    <dt>Pin back into the thread <span class="k">📌 on a selected
+        message</span></dt>
+    <dd>Two taps sends a real “📌 ‘quote’ 〰️” message into the actual
+        conversation through Messages itself — both of you see it in
+        Messages, and Zettel renders it as a breathing ember card.
+        The archive file itself is never written.</dd>
+    <dt>Reignite <span class="k">↻ on a selected message</span></dt>
+    <dd>Bring a moment back to attention. Two taps sends a gentle
+        “still on this” nudge into the thread — a reminder for them —
+        and re-lights the moment for you, glowing until it's handled.</dd>
+    <dt>Your next message <span class="k">the dashed bubble at the
+        stream's foot</span></dt>
+    <dd>Compose where the message will land. The bubble is dashed while
+        it's only a proposal — two taps send a real iMessage, no emoji,
+        no signature — and the landed message glows amber as it joins
+        the record, so you see exactly where your words went.</dd>
+    <dt>Magic ink <span class="k">✎ hand · in the bubble</span></dt>
+    <dd>Write with the pen; <em>read it back</em> and your ink becomes
+        words — read entirely on your own Mac, never sent anywhere. The
+        words appear for your eyes first, editable, and only then can
+        the two taps send them.</dd>
+    <dt>Margins <span class="k">a</span> <span class="k">✎</span></dt>
+    <dd>A private note on any message — your ink, never leaves this Mac.
+        Lines that start with <span class="k">[]</span> become living
+        checkboxes.</dd>
+    <dt>Notes on the track <span class="k">double-click the
+        waveform</span></dt>
+    <dd>Pin a thought to a moment in time itself, no message required.
+        Hover the open circle to read it.</dd>
+    <dt>Chapters</dt>
+    <dd>Name the eras. They sit on the waveform like sections of a
+        track; click a title to travel.</dd>
+  </dl>
+
+  <h2>extract — take things out</h2>
+  <dl>
+    <dt>Search that works</dt>
+    <dd><span class="k">"exact phrase"</span>
+        <span class="k">from:me</span> <span class="k">from:them</span>
+        <span class="k">before:2024-01-01</span>
+        <span class="k">after:2023-06-01</span>
+        <span class="k">has:link</span> <span class="k">has:image</span>
+        <span class="k">has:voice</span> <span class="k">has:mark</span>
+        <span class="k">in:all</span> — that last one searches every
+        conversation you've ever had. Even words that were only spoken:
+        voice memos transcribe on this Mac, then search like text.</dd>
+    <dt>Voice memos <span class="k">transcribe</span></dt>
+    <dd>Play them in place; one click transcribes locally (whisper —
+        nothing leaves the machine). Transcripts show, search, and
+        export.</dd>
+    <dt>Timestamp links <span class="k">y</span> <span class="k">⌗</span></dt>
+    <dd>A link to an exact moment, to the second. On the other person's
+        Mac it opens the same moment in their own archive.</dd>
+    <dt>Share cards <span class="k">x</span></dt>
+    <dd>A still, beautiful artifact of one moment with a little context —
+        the only thing that ever leaves is what you choose to send.</dd>
+    <dt>Export <span class="k">e</span> · copy one message
+        <span class="k">c</span></dt>
+    <dd>High-fidelity transcripts of any range — copy, download, or hand
+        straight to Claude with a framing note. Facets index every link,
+        image, reply-thread, and mark.</dd>
+    <dt>Wrapped</dt>
+    <dd>The stat sheet: streaks, busiest days, who opens the mornings —
+        over any window, by year or by month. <em>keep as image</em> saves
+        it as a card you can send — numbers only, never words or names.</dd>
+  </dl>
+
+  <h2>inhabit — where it lives</h2>
+  <dl>
+    <dt>Evenings <span class="k">amber</span></dt>
+    <dd>The calm register: warm paper, bigger serif, no chrome. Run with
+        <span class="k">--share</span> and the terminal prints one
+        key-guarded link for a tablet on your wifi — unencrypted, so
+        trusted home wifi only.</dd>
+    <dt>Back up your ink</dt>
+    <dd>On your Mac, every note, mark,
+        chapter, and pen stroke you've made downloads as a zip — the
+        archive itself never needs backing up (it is read-only,
+        always), but this is yours. Not in this demo: marks you make
+        here live in this browser only.</dd>
+  </dl>
+
+  <div class="vow">
+    <p>By default, nothing leaves your Mac — no account, no server of
+    ours. The archive is read-only, forever; your margins stay private
+    on your machine; the only words that leave are the ones you send
+    with two deliberate taps. Turn the wifi off: everything still
+    works.</p>
+    <p>Three exceptions exist, each a door only you can open.
+    <em>Your wifi</em> — <span class="k">--share</span> serves your
+    archive to a device on your own network, plain HTTP, a wifi you
+    trust. <em>Your folder</em> — if you and one other person choose to
+    co-annotate a thread, only the notes you each explicitly promote
+    sync, through a folder in a cloud you choose and control; those
+    bytes pass through that company's servers, not ours; revoke the
+    folder anytime. <em>Your summons</em> — when you call on an outside
+    mind (a question to Claude, a parcel tracker, a forecast), exactly
+    what you selected travels to that one service, and the summons shows
+    you the payload first. Nothing is scanned, watched, or sent without
+    your two taps.</p>
+    <p>Every exception is a loan, not an amendment: as capability comes
+    home to your Mac, the crossings retire.</p>
+  </div>
+
+  <footer class="mono" id="version-footer"></footer>
+</main>
+<script>
+// version only — a quiet identity mark, not a health gate; the guide
+// still reads fine if this fetch fails (e.g. FDA not yet granted)
+fetch("/api/health").then((r) => r.json()).then((h) => {
+  if (h.version) {
+    document.getElementById("version-footer").textContent =
+      `Zettel v${h.version}`;
+  }
+}).catch(() => {});
+</script>
+</body>
+</html>

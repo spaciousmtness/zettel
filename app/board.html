@@ -1,0 +1,62 @@
+<!doctype html>
+<!-- Zettel · ambient split-flap board.
+     Full-screen Vestaboard-style dispatch that rotates between the
+     relationship's Wrapped stats and "on this day" echoes from past years.
+     Open as /board.html?chat=<identifier> (defaults to the busiest thread).
+     ?calm=1 forces the Daylight e-ink mode (stepped fades, no drum spin). -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Zettel · board</title>
+<link rel="stylesheet" href="forme-tokens.css">
+<link rel="stylesheet" href="styles.css">
+<style>
+  html, body {
+    height: 100%; margin: 0; background: #0b0b09;
+    display: grid; place-items: center; overflow: hidden;
+  }
+  #stage { display: grid; gap: 18px; justify-items: center; }
+  /* scale the shared flap styles up to fill the room */
+  #stage .wrapped-board {
+    width: min(94vw, 152vh);
+    padding: min(2vw, 26px); gap: min(.62vw, 9px); border-radius: 12px;
+  }
+  #stage .wrapped-board-row { gap: min(.62vw, 9px); }
+  #stage .wrapped-flap {
+    font-size: min(2.9vw, 4.6vh); border-radius: min(.42vw, 6px);
+    letter-spacing: .04em;
+  }
+  #caption {
+    font-family: ui-monospace, Menlo, monospace; font-size: min(1.5vw, 15px);
+    color: #8f8a7c; letter-spacing: .18em; text-transform: lowercase;
+  }
+  /* one drum step: a fast half-flip as the character advances */
+  #stage .wrapped-flap.stepping {
+    animation: flap-step var(--step-dur, 90ms) cubic-bezier(.5, 0, .65, .45) both;
+    animation-delay: 0ms;
+  }
+  @keyframes flap-step {
+    0%   { transform: rotateX(-72deg); }
+    100% { transform: rotateX(0deg); }
+  }
+  body.calm { background: #f4f0e7; }
+  body.calm #caption { color: #6b6659; }
+  @media (prefers-reduced-motion: reduce) {
+    #stage .wrapped-flap.stepping { animation: none; }
+  }
+</style>
+<!-- the static demo shim: a CLASSIC script, and it MUST run before the
+     app.js module tag. It replaces window.fetch first, so shared.js's
+     installApiSecurity() captures it as its own nativeFetch and the two
+     compose with zero changes to the app. -->
+<script src="demo.js"></script>
+</head>
+<body>
+<main id="stage" aria-live="polite">
+  <div class="wrapped-board" id="board" role="img" aria-label="Zettel board"></div>
+  <span id="caption">zettel · board</span>
+</main>
+<script src="board.js"></script>
+</body>
+</html>

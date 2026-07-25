@@ -1,12 +1,209 @@
-<!doctype html><html lang="en"><head><meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Zettel — demo</title><meta name="theme-color" content="#f6f2e9">
-<style>html,body{margin:0;height:100%;background:#f6f2e9;color:#1c1a15;
-font:16px/1.5 Georgia,serif}main{max-width:30rem;margin:0 auto;padding:20vh 1.5rem}
-.m{font:11px/1.6 ui-monospace,Menlo,monospace;letter-spacing:.08em;color:#6f685c}
-a{color:inherit}</style></head><body><main>
-<p class="m">〰️ zettel</p>
-<p>The interactive demo is being placed here. It carries a synthetic archive of
-invented people — no real conversation is ever on a server.</p>
-<p class="m"><a href="../">← back</a></p>
-</main></body></html>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Zettel</title>
+<!-- installable app. The manifest is the standard; iOS still reads its own
+     meta tags for home-screen title, standalone launch, and touch icon, so
+     both are load-bearing. theme-color is the --vellum token literal (a
+     meta tag cannot hold a CSS var); pwa.js keeps it on whatever paper the
+     body is actually showing, so the DC-1's status bar never disagrees
+     with the sheet under it. Paths are relative — the app must install the
+     same way at an origin root and under a project path. -->
+<!-- crossorigin="use-credentials" is load-bearing, not boilerplate: a
+     manifest is fetched WITHOUT cookies by default, and on a shared origin
+     (--share / Tailscale Serve) every path 401s without the pairing
+     cookie. Measured: cookieless GET /manifest.webmanifest -> 401. Without
+     this attribute the DC-1 cannot install the app at all. -->
+<link rel="manifest" href="manifest.webmanifest" crossorigin="use-credentials">
+<meta name="theme-color" content="#f6f2e9">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Zettel">
+<link rel="apple-touch-icon" href="icon-180.png">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="icon" href="icon-192.png" sizes="192x192" type="image/png">
+<link rel="stylesheet" href="forme-tokens.css">
+<link rel="stylesheet" href="styles.css">
+<!-- the static demo shim: a CLASSIC script, and it MUST run before the
+     app.js module tag. It replaces window.fetch first, so shared.js's
+     installApiSecurity() captures it as its own nativeFetch and the two
+     compose with zero changes to the app. -->
+<script src="demo.js"></script>
+</head>
+<body>
+<div id="app">
+  <!-- ground: just the conversation -->
+  <header>
+    <h1><span class="wordmark">Zettel</span> <em id="thread-name"></em></h1>
+    <span class="mono" id="ground-hint">t · relationship map</span>
+  </header>
+  <div id="arrival-signal" class="arrival-signal mono" role="status"
+       aria-live="polite" hidden></div>
+
+  <main>
+    <aside id="chronology" aria-label="conversation chronology">
+      <div id="chronology-track" role="slider" tabindex="0"
+           aria-label="conversation chronology" aria-orientation="vertical">
+        <canvas id="chronology-canvas" aria-hidden="true"></canvas>
+        <div id="chronology-marks" aria-label="annotations on the chronology"></div>
+        <div id="chronology-position" aria-hidden="true" hidden></div>
+      </div>
+      <button id="chronology-back" type="button" hidden disabled
+              aria-label="back to the previous reading place"
+              title="back to the previous place">↩</button>
+      <output id="chronology-preview" aria-live="polite" hidden></output>
+    </aside>
+    <div id="timeline" tabindex="0" aria-label="messages"></div>
+
+    <div id="export" class="lifted" role="dialog" aria-label="export transcript">
+      <p>Export a high-fidelity transcript — senders, times, replies,
+         reactions, attachments.</p>
+      <div class="export-range">
+        <label class="mono">from <input type="date" id="export-from"></label>
+        <label class="mono">to <input type="date" id="export-to"></label>
+        <button id="export-all" title="whole thread">everything</button>
+        <label class="mono export-pins">
+          <input type="checkbox" id="export-pins"> pins only</label>
+      </div>
+      <div class="export-actions">
+        <button id="export-copy">copy</button>
+        <button id="export-download">download .md</button>
+        <button id="export-claude">export to Claude ↗</button>
+      </div>
+      <p class="mono" id="export-note"></p>
+    </div>
+
+    <div id="goto" class="lifted" role="dialog" aria-label="go to date">
+      <div class="years">
+        <button id="year-prev" aria-label="previous year">‹</button>
+        <span class="year-label" id="year-label"></span>
+        <button id="year-next" aria-label="next year">›</button>
+      </div>
+      <div class="months" id="months"></div>
+    </div>
+  </main>
+
+  <!-- the next message: a dashed proposal at the stream's foot that
+       becomes solid record on send — write it with keys or the pen -->
+  <div id="bubble">
+    <button id="bubble-rest" class="mono">✎ your next message…</button>
+    <div id="bubble-card" hidden>
+      <div id="bubble-meta-row">
+        <span class="mono" id="bubble-meta">me · about to be</span>
+        <button type="button" class="mono" id="bubble-move"
+                title="move this draft to another thread">→ elsewhere…</button>
+      </div>
+      <div id="bubble-threads" hidden></div>
+      <div id="bubble-text" contenteditable="plaintext-only"
+           aria-label="your message, before it is one"></div>
+      <canvas id="bubble-ink" hidden
+              aria-label="write your message with the pen"></canvas>
+      <div id="bubble-row">
+        <button id="bubble-mode" type="button" class="mono">✎ hand</button>
+        <button id="bubble-read" type="button" class="mono" hidden>read handwriting</button>
+        <button id="bubble-clear" type="button" class="mono" hidden>clear</button>
+        <button id="bubble-away" type="button" class="mono"
+                title="put it away — nothing sends">▾ away</button>
+        <button id="bubble-send" type="button" class="mono">send</button>
+        <span id="bubble-note" class="mono" role="status"></span>
+      </div>
+    </div>
+  </div>
+
+  <!-- the handle: always present, quiet -->
+  <footer id="layer-handle" class="mono" role="button" tabindex="0"
+          aria-label="open timeline layer">
+    <span id="handle-label">▴ relationship map</span>
+    <span id="handle-meta">j/k move · n/p marks · g date · space play</span>
+  </footer>
+
+  <!-- the summoned layer: waveform + granularity -->
+  <section id="layer" aria-label="timeline layer" hidden>
+    <div id="track-deck">
+      <div id="track-head">
+        <button id="play-btn" title="play the conversation (space)"
+                aria-label="play the conversation">
+          <svg viewBox="0 0 20 20" aria-hidden="true">
+            <path class="tri" d="M5.5 3.5 L16.5 10 L5.5 16.5 Z"/>
+            <g class="bars"><rect x="5" y="4" width="3.4" height="12"/>
+              <rect x="11.6" y="4" width="3.4" height="12"/></g>
+          </svg>
+        </button>
+        <div id="track-copy">
+          <span class="mono" id="track-world">conversation track</span>
+          <strong id="track-title">Zettel</strong>
+          <span class="mono" id="track-summary"></span>
+        </div>
+        <div id="track-readout" aria-live="polite">
+          <span id="track-date">most recent</span>
+          <span class="mono" id="track-position">ready</span>
+        </div>
+      </div>
+      <div id="wave" aria-label="conversation waveform">
+        <svg id="wave-svg" preserveAspectRatio="none"></svg>
+        <div class="drag-label mono" id="drag-label"></div>
+      </div>
+      <div id="track-foot">
+        <div id="track-people" class="mono" aria-label="waveform directions">
+          <span class="track-person track-person-me">ME</span>
+          <span>above</span>
+          <span class="track-divider" aria-hidden="true"></span>
+          <span class="track-person" id="track-peer">THEM</span>
+          <span>below</span>
+        </div>
+        <button type="button" id="track-z" class="mono" hidden
+                aria-pressed="false"
+                aria-label="lift the annotation layer">
+          <span aria-hidden="true">z</span>
+          <span id="z-rule" aria-hidden="true"></span>
+          <span id="z-count" aria-live="polite"></span>
+        </button>
+        <button type="button" id="track-pen" class="mono" hidden
+                aria-pressed="false"
+                aria-label="write on the annotation layer by hand">✎ write</button>
+        <button type="button" id="track-undo" class="mono" hidden
+                aria-label="undo the last stroke">undo</button>
+        <nav id="track-ranges" aria-label="timeline range">
+          <span class="mono">window</span>
+          <button type="button" data-range="90">90d</button>
+          <button type="button" data-range="365">1y</button>
+          <button type="button" data-range="1825">5y</button>
+          <button type="button" data-range="all" aria-pressed="true">all</button>
+        </nav>
+      </div>
+    </div>
+    <div id="layer-controls">
+      <nav id="facets" aria-label="indexes">
+        <button class="facet" data-facet="pins">marks <span class="mono" id="pin-count"></span></button>
+        <button class="facet" data-facet="desk">desk</button>
+        <button class="facet" data-facet="notes">journal</button>
+        <button class="facet" data-facet="chapters">chapters</button>
+        <button class="facet" data-facet="links">links</button>
+        <button class="facet" data-facet="media">media</button>
+        <button class="facet" data-facet="threads">threads</button>
+        <button class="facet" data-facet="wrapped">wrapped</button>
+      </nav>
+      <input id="search" type="search"
+             placeholder="find in this conversation…"
+             aria-label="search messages">
+      <nav id="worlds" aria-label="messaging worlds"></nav>
+      <select id="thread-pick" aria-label="conversation"></select>
+      <button id="goto-btn" title="go to date (g)">go to…</button>
+      <button id="export-btn" title="copy / export (e)">export…</button>
+      <button id="amber-btn" title="evening palette">amber</button>
+      <button id="guide-btn" title="the guide (?)">?</button>
+      <button id="layer-close" title="close (esc)">▾</button>
+    </div>
+    <div id="facet-body" hidden>
+      <div id="panel-body"></div>
+      <button id="panel-more" class="more" hidden>older…</button>
+    </div>
+  </section>
+</div>
+<script type="module" src="app.js"></script>
+<script src="pwa.js" type="module"></script>
+</body>
+</html>

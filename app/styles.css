@@ -1,0 +1,1244 @@
+/* iMessage Timeline — Living Paper components over forme-tokens.css.
+   Ground = the conversation, nothing else. Granularity lives in a summoned
+   layer (the Z axis is the grammar). No box-shadow anywhere. Amber means
+   agency; cool blue only whispers iMessage transport and arrival.
+   Every meaning-bearing distinction must survive filter: grayscale(1). */
+
+* { box-sizing: border-box; }
+
+/* the hidden attribute always wins — display rules on components kept
+   quietly defeating it (say-form, bubble-rest, bubble-ink: three bites) */
+[hidden] { display: none !important; }
+
+html, body {
+  margin: 0; height: 100%;
+  background: var(--vellum); color: var(--ink);
+  font-family: Georgia, 'Iowan Old Style', serif;
+  font-size: 16px; line-height: 1.45;
+}
+
+.mono {
+  font-family: ui-monospace, Menlo, monospace;
+  font-size: 11px; letter-spacing: .08em;
+  color: var(--slate);
+}
+
+/* control hierarchy: primary actions wear the ink box; fields wear a
+   soft deckle edge; everything utilitarian is quiet text. Uniform boxes
+   read like a rough draft — hierarchy is the sophistication. */
+button, select, input {
+  font: inherit; color: var(--ink); background: var(--bone);
+  border: 1.5px solid var(--ink); border-radius: 3px;
+  min-height: 44px; padding: 0 var(--s2); cursor: pointer;
+}
+select, input {
+  border: 1px solid var(--deckle); background: var(--bone);
+}
+button.quiet {
+  border: none; background: none; color: var(--graphite);
+  text-decoration: underline; text-decoration-color: transparent;
+  text-underline-offset: 4px;
+  transition: text-decoration-color var(--kiss) var(--press);
+}
+button.quiet:hover { text-decoration-color: var(--umber); color: var(--ink); }
+button:focus-visible, select:focus-visible, input:focus-visible,
+[tabindex]:focus-visible {
+  outline: 2px solid var(--amber); outline-offset: 2px;
+}
+
+/* ---- ground: header / stream / handle ---- */
+
+#app {
+  display: flex; flex-direction: column; height: 100%; position: relative;
+  max-width: 100vw; overflow: hidden;
+}
+
+header {
+  display: flex; align-items: baseline; justify-content: space-between;
+  padding: var(--s2) max(var(--s3), calc((100% - 78ch) / 2));
+  border-bottom: 1px solid var(--hairline);
+}
+header h1 { font-size: 17px; font-weight: normal; margin: 0; }
+header h1 .wordmark { letter-spacing: .02em; }
+header h1 em { font-style: italic; color: var(--graphite); margin-left: var(--s1); }
+
+/* The "you've got mail" beat: one quiet line, then gone. The protocol glyph
+   remains after it settles, so color is never the only carrier of meaning. */
+.arrival-signal {
+  --arrival-ink: var(--slate);
+  position: fixed; top: 56px; left: 50%;
+  transform: translate(-50%, -5px); z-index: var(--z-consent);
+  max-width: min(78ch, calc(100vw - 24px));
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  padding: var(--s1) var(--s3); color: var(--arrival-ink);
+  background: var(--vellum); border-block: 1px solid var(--arrival-ink);
+}
+.arrival-signal.imessage { --arrival-ink: var(--imessage-blue); }
+.arrival-signal.showing { animation: arrival-surface 4.2s var(--press) both; }
+@keyframes arrival-surface {
+  0% { opacity: 0; transform: translate(-50%, -8px); }
+  16%, 82% { opacity: 1; transform: translate(-50%, 0); }
+  100% { opacity: 0; transform: translate(-50%, -2px); }
+}
+
+main { display: flex; flex: 1; min-height: 0; position: relative; }
+
+/* The everyday chronology: Codex's quiet reading rail crossed with the
+   SoundCloud idea that authored meaning has a coordinate. It stays beside
+   the stream; the wide relationship map remains a summoned second scale. */
+#chronology {
+  position: relative; flex: 0 0 82px; min-width: 0; min-height: 0;
+  display: flex; flex-direction: column; align-items: stretch;
+  border-right: 1px solid var(--hairline); background: var(--vellum);
+  z-index: var(--z-margin);
+}
+#chronology-track {
+  position: relative; flex: 1; min-height: 96px; overflow: visible;
+  touch-action: none; user-select: none; cursor: ns-resize;
+}
+#chronology-track:focus-visible { outline-offset: -3px; }
+#chronology-canvas, #chronology-marks {
+  position: absolute; inset: 0; width: 100%; height: 100%;
+}
+#chronology-canvas { pointer-events: none; }
+#chronology-marks { pointer-events: none; }
+#chronology-position {
+  position: absolute; left: 8px; width: 42px; height: 2px;
+  transform: translateY(-1px); background: var(--ink);
+  pointer-events: none; z-index: 3;
+}
+#chronology-position::after {
+  content: ""; position: absolute; right: -2px; top: -3px;
+  width: 8px; height: 8px; border-radius: 50%;
+  background: var(--bone); border: 1.5px solid var(--ink);
+}
+.chronology-landmark {
+  position: absolute; width: 44px; height: 44px; min-height: 44px;
+  padding: 0; border: 0; border-radius: 0; background: transparent;
+  display: grid; place-items: center; pointer-events: auto;
+}
+.chronology-face {
+  width: 26px; height: 26px; display: grid; place-items: center;
+  overflow: hidden; border: 1px solid var(--graphite); border-radius: 50%;
+  color: var(--ink); background: var(--bone);
+  font-size: 11px; letter-spacing: 0; font-variant-numeric: tabular-nums;
+}
+.chronology-count {
+  position: absolute; left: 30px; top: 4px; min-width: 14px;
+  color: var(--sienna); background: var(--vellum);
+  font-size: 10px; line-height: 14px; text-align: center; letter-spacing: 0;
+}
+.chronology-landmark.is-live .chronology-face {
+  border: 2px solid var(--amber);
+}
+.chronology-note .chronology-face {
+  border-radius: 2px; border-style: dashed;
+}
+.chronology-note.is-shared .chronology-face {
+  border-color: var(--amber); border-style: double;
+}
+.chronology-chapter .chronology-face {
+  border-radius: 0; border-width: 0 0 2px; background: transparent;
+}
+.chronology-landmark:hover .chronology-face,
+.chronology-landmark:focus-visible .chronology-face {
+  color: var(--bone); background: var(--ink); border-color: var(--ink);
+}
+#chronology-back {
+  /* the layer (z-surfaced) covered the rail's foot, so this was
+     unclickable in the exact flow that arms it — you jump FROM the layer */
+  position: relative; z-index: calc(var(--z-surfaced) + 1);
+  flex: 0 0 44px; width: 44px; min-height: 44px; margin: 0 auto;
+  padding: 0; border: 0; background: transparent; color: var(--graphite);
+  font-size: 18px;
+}
+#chronology-back:hover { color: var(--ink); }
+#chronology-preview {
+  position: absolute; left: calc(100% + 10px); z-index: var(--z-surfaced);
+  width: min(330px, calc(100vw - 112px)); min-width: 220px;
+  display: flex; flex-direction: column; gap: 4px;
+  padding: var(--s2) var(--s3); color: var(--ink); background: var(--bone);
+  border: 1px solid var(--deckle); border-left: 2px solid var(--ink);
+  border-radius: 4px; pointer-events: none;
+}
+#chronology-preview strong {
+  font-size: 15px; font-weight: normal; font-style: italic;
+}
+.chronology-preview-meta, .chronology-preview-more { color: var(--slate); }
+.chronology-preview-reading {
+  display: block; padding-top: 4px; border-top: 1px solid var(--hairline);
+  font-size: 14px; line-height: 1.35;
+}
+#chronology-track.is-scrubbing #chronology-position { background: var(--amber); }
+#chronology-track.is-scrubbing #chronology-position::after {
+  border-color: var(--amber); border-width: 2px;
+}
+
+#timeline {
+  flex: 1; overflow-y: auto; overflow-x: hidden;
+  position: relative; /* offsetTop of rows stays in scroll-content coords */
+  padding: var(--s3) max(var(--s4), calc((100% - 78ch) / 2));
+}
+
+#layer-handle {
+  padding: 0 var(--s3);
+  min-height: 44px; display: flex; align-items: center;
+  justify-content: space-between; gap: var(--s3);
+  border-top: 1px solid var(--hairline);
+  background: var(--plate);
+  cursor: pointer; user-select: none;
+}
+#layer-handle:hover { background: var(--greige); }
+#handle-label { color: var(--ink); white-space: nowrap; }
+#handle-meta {
+  min-width: 0; overflow: hidden; text-overflow: ellipsis;
+  white-space: nowrap; text-align: right;
+}
+
+/* the bubble: your next message, dashed until it's real ------------------- */
+#bubble {
+  border-top: 1px solid var(--hairline);
+  padding: var(--s2) max(var(--s4), calc((100% - 78ch) / 2));
+}
+#bubble-rest {
+  display: block; margin-left: var(--s6); max-width: 62ch;
+  border: 1.5px dashed var(--hairline); border-radius: 4px;
+  background: none; color: var(--slate); font-style: italic;
+  min-height: 44px; padding: 0 var(--s3); text-align: left;
+  width: calc(100% - var(--s6));
+}
+#bubble-rest:hover { border-color: var(--slate); }
+#bubble-card {
+  margin-left: var(--s6); max-width: 62ch;
+  border: 1.5px dashed var(--ink); border-radius: 4px;
+  background: var(--bone); padding: var(--s2) var(--s3);
+}
+#bubble-meta-row {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: var(--s2); padding-bottom: 4px;
+}
+#bubble-meta { color: var(--slate); }
+#bubble-move {
+  min-height: 44px; border: none; background: none; color: var(--slate);
+  white-space: nowrap;
+  text-decoration: underline; text-decoration-color: transparent;
+  text-underline-offset: 4px;
+}
+#bubble-move:hover { text-decoration-color: var(--slate); }
+#bubble-threads { max-height: 240px; overflow-y: auto; }
+.bubble-thread {
+  display: block; width: 100%; text-align: left;
+  min-height: 44px; border: none; background: none;
+  color: var(--graphite); border-top: 1px solid var(--hairline);
+}
+.bubble-thread.current { color: var(--ink); }
+.bubble-thread:hover { background: var(--greige); }
+#bubble-text {
+  min-height: 44px; font: inherit; color: var(--ink);
+  outline: none; white-space: pre-wrap; word-break: break-word;
+  padding: 8px 0;
+}
+#bubble-text:empty::before {
+  content: "into the thread, as yourself…";
+  color: var(--slate); font-style: italic;
+}
+#bubble-ink {
+  display: block; width: 100%; max-width: 100%; height: 200px;
+  background: var(--bone); border: 1px solid var(--hairline);
+  border-radius: 3px;
+  touch-action: none; cursor: crosshair;
+}
+#bubble-row {
+  display: flex; flex-wrap: wrap; gap: var(--s2); align-items: center;
+  padding-top: 4px;
+}
+#bubble-row button {
+  min-height: 44px; white-space: nowrap;
+  border: none; background: none; color: var(--graphite);
+  text-decoration: underline; text-decoration-color: transparent;
+  text-underline-offset: 4px;
+}
+#bubble-row button:hover { text-decoration-color: var(--graphite); }
+#bubble-send {
+  border: 1.5px solid var(--ink) !important; border-radius: 3px;
+  color: var(--ink) !important; padding: 0 var(--s3);
+  margin-left: auto;
+}
+#bubble-send[data-armed="1"] {
+  border-color: var(--amber) !important; color: var(--amber) !important;
+}
+#bubble-note { flex: 1 1 100%; color: var(--slate); }
+
+/* the hand behind the words: ✍ toggles a message between its text and
+   the strokes it was written with — provenance in the marginalia register */
+.ink-toggle {
+  min-height: 44px; min-width: 44px; padding: 0 var(--s1);
+  border: none; background: none;
+}
+.ink-hand svg {
+  display: block; width: 100%; max-width: 46ch; height: auto;
+  background: var(--bone); border: 1px solid var(--hairline);
+  border-radius: 3px; margin: 2px 0;
+}
+
+/* the landed message: the proposal became record, seen becoming so —
+   a brief warm wash plus the amber edge, cooling as it settles in */
+.msg.mine.just-said {
+  border-left-color: var(--amber);
+  border-left-width: 3px;
+  background: color-mix(in srgb, var(--amber) 12%, transparent);
+  transition: background 1.6s ease;
+}
+
+/* ---- message rows ---- */
+
+.day-sep {
+  display: flex; align-items: center; gap: var(--s2);
+  margin: var(--s4) 0 var(--s2);
+}
+.day-sep[hidden] { display: none; }
+.day-sep::before, .day-sep::after {
+  content: ""; flex: 1; border-top: 1px solid var(--hairline);
+}
+
+.msg {
+  max-width: 62ch; padding: var(--s1) var(--s2);
+  margin: 2px 0; border-radius: 3px;
+  position: relative;
+}
+.msg .sender { display: block; margin-bottom: 1px; }
+/* origin: a whisper in the meta line, quieter than the name it trails */
+.msg .sender .origin {
+  color: var(--slate); font-size: .85em;
+  margin: 0 6px 0 1px;  /* trails the name; keeps air before the timestamp */
+}
+.msg .sender .origin-imessage {
+  position: relative; display: inline-grid; place-items: center;
+  width: 13px; height: 13px; margin: 0 5px 0 1px;
+  color: var(--imessage-blue); font-weight: bold;
+}
+.msg .sender .origin-imessage::after {
+  content: ""; position: absolute; inset: 0;
+  border: 1px solid var(--imessage-halo); border-radius: 50%;
+  pointer-events: none;
+}
+.msg .body { white-space: pre-wrap; word-wrap: break-word; }
+.msg .body a { color: var(--sienna); text-decoration-color: var(--deckle); }
+.msg .body.placeholder { font-style: italic; color: var(--slate); }
+.msg .when { opacity: 0; transition: opacity var(--kiss) var(--press); }
+.msg:hover .when, .msg.selected .when { opacity: 1; }
+
+/* mine vs theirs: form, not hue (grayscale-survivable) */
+.msg.mine { margin-left: var(--s6); border-left: 2px solid var(--ink); }
+.msg.theirs { margin-right: var(--s6); }
+
+.msg.selected { background: var(--tint); }
+.msg.pinned { border-right: 3px double var(--amber); }
+.msg.anchor-pulse { background: var(--tint); transition: background var(--pull) var(--press); }
+.msg.anchor-pulse.settled { background: transparent; }
+
+/* New messages arrive once, then return to paper. The outline gives the same
+   event on grayscale; only iMessage borrows the cool-blue transport token. */
+.msg { --arrival-ink: var(--slate); }
+.msg.via-imessage { --arrival-ink: var(--imessage-blue); }
+.msg.arriving { animation: message-arrival 4.2s var(--press) both; }
+@keyframes message-arrival {
+  0% { outline: 0 solid transparent; outline-offset: 9px; background: transparent; }
+  18% {
+    outline: 2px solid var(--arrival-ink); outline-offset: 3px;
+    background: color-mix(in srgb, var(--arrival-ink) 8%, transparent);
+  }
+  100% { outline: 1px solid transparent; outline-offset: 0; background: transparent; }
+}
+
+/* the ember: hover a pin on the waveform, its message glows like a coal
+   (neon, translated into Living Paper — light as slow amber, never RGB) */
+.msg.ember::before {
+  content: ""; position: absolute; inset: -1px; border-radius: 3px;
+  background: var(--amber); pointer-events: none; z-index: -1;
+  animation: ember-pulse var(--ember-tempo) ease-in-out infinite;
+}
+@keyframes ember-pulse { 0%, 100% { opacity: .10 } 50% { opacity: .22 } }
+.mark-hot { animation: ember-pulse var(--ember-tempo) ease-in-out infinite; }
+
+/* every pin carries a quiet corona, each on its own phase — coals */
+@keyframes halo-breathe { 0%, 100% { opacity: .14 } 50% { opacity: .38 } }
+.mark-halo {
+  opacity: .2;
+  animation: halo-breathe var(--ember-tempo) ease-in-out infinite;
+  pointer-events: none;
+}
+/* e-ink ghosts: a pulse leaves a trail on the panel, so calm mode stops
+   ALL of them. Three were still breathing here (ember, pinback, resurfaced)
+   — form carries those states without motion. */
+body.calm .mark-halo, body.calm .msg.pinned::after,
+body.calm .msg.ember::before, body.calm .msg.pinback::before,
+body.calm .msg.resurfaced::before {
+  animation: none; opacity: .22;
+}
+@media (prefers-reduced-motion: reduce) {
+  .mark-halo, .mark-hot, .msg.ember::before, .msg.pinned::after,
+  .msg.arriving, .arrival-signal.showing { animation: none; }
+}
+
+/* pinned messages in the stream keep a living edge */
+.msg.pinned::after {
+  content: ""; position: absolute; top: 0; bottom: 0; right: -5px;
+  width: 5px; border-radius: 3px; background: var(--amber);
+  pointer-events: none;
+  animation: halo-breathe var(--ember-tempo) ease-in-out infinite;
+}
+
+/* reignited: brought back to attention — a fuller, faster ember than a
+   resting pin, so a resurfaced moment reads as alive-again at a glance */
+@keyframes reignite-pulse { 0%, 100% { opacity: .16 } 50% { opacity: .40 } }
+.msg.resurfaced { border-radius: 4px; }
+.msg.resurfaced::before {
+  content: ""; position: absolute; inset: -2px; border-radius: 4px;
+  background: var(--amber); pointer-events: none; z-index: -1;
+  animation: reignite-pulse var(--ember-tempo) ease-in-out infinite;
+}
+.msg.resurfaced::after {
+  content: "↻"; position: absolute; top: 2px; left: -18px;
+  color: var(--sienna); font-size: 13px;
+}
+
+.tapbacks { margin-top: 2px; }
+.tapbacks .tb { margin-right: var(--s2); }
+.tapbacks .tb.pin { color: var(--sienna); font-weight: bold; }
+
+/* reply threads: quiet mono marginalia, dashed = elsewhere */
+.reply-to, .reply-count { display: inline-block; margin-top: 2px; }
+.reply-to {
+  /* it navigates, so it needs a hand-sized target: it measured 398x17 */
+  display: inline-flex; align-items: center; min-height: 44px;
+  max-width: 100%; overflow: hidden; text-overflow: ellipsis;
+  white-space: nowrap;
+  position: relative; cursor: pointer;
+  border-bottom: 1px dashed var(--umber);
+  background: none; border-top: none; border-left: none; border-right: none;
+  min-height: 0; padding: 0; border-radius: 0;
+  font-family: ui-monospace, Menlo, monospace; font-size: 11px;
+  letter-spacing: .08em; color: var(--slate);
+}
+.reply-to:hover { color: var(--ink); }
+
+/* marginalia: your ink in the margin of the record */
+.msg-note {
+  display: block; margin-top: var(--s1); padding-left: var(--s2);
+  border-left: 2px dashed var(--deckle);
+  font-style: italic; color: var(--graphite); max-width: 54ch;
+}
+.note-editor {
+  display: block; width: min(54ch, 100%); margin-top: var(--s1);
+  font-style: italic; resize: vertical; padding: var(--s1) var(--s2);
+}
+.note-line {
+  display: block; font-style: italic; color: var(--graphite);
+  padding-left: var(--s2); border-left: 2px dashed var(--deckle);
+  margin: 2px 0;
+}
+
+/* glassnote todos + touch affordance */
+.note-todo {
+  display: flex; align-items: center; gap: var(--s1);
+  min-height: 32px; cursor: pointer;
+}
+.note-todo input {
+  width: 17px; height: 17px; min-height: 0;
+  accent-color: var(--sienna); margin: 0;
+}
+.note-todo .done { text-decoration: line-through; color: var(--umber); }
+.note-text { display: block; }
+.msg .note-btn, .msg .link-btn, .msg .pin-btn, .msg .reignite-btn {
+  display: none; position: absolute; top: -4px;
+  min-height: 44px; min-width: 44px; padding: 0 var(--s1);
+}
+.msg .note-btn { right: 0; }
+.msg .link-btn { right: 48px; }
+.msg .pin-btn { right: 96px; white-space: nowrap; }
+.msg .reignite-btn { right: 144px; white-space: nowrap; }
+.msg.selected .reignite-btn, .msg:hover .reignite-btn,
+.msg.selected .note-btn, .msg:hover .note-btn,
+.msg.selected .link-btn, .msg:hover .link-btn,
+.msg.selected .pin-btn, .msg:hover .pin-btn { display: inline-block; }
+
+/* a pin spoken back into the thread: alive, breathing — the plasma,
+   in Living Paper's only sanctioned light */
+.msg.pinback { border: 1.5px solid var(--amber); border-radius: 4px; }
+.msg.pinback::before {
+  content: ""; position: absolute; inset: -1px; border-radius: 4px;
+  background: var(--amber); pointer-events: none; z-index: -1;
+  animation: ember-pulse var(--ember-tempo) ease-in-out infinite;
+}
+.msg.pinback .body { font-style: italic; }
+
+/* wrapped: the stat sheet over any window */
+.wrapped-controls {
+  display: flex; gap: var(--s2); align-items: center; flex-wrap: wrap;
+  padding: var(--s2) 0; border-bottom: 1px solid var(--hairline);
+}
+.wrapped-controls input[type="date"] { min-height: 44px; }
+
+.wrapped-hero { display: block; padding: var(--s3) 0 var(--s2); }
+.wrapped-big {
+  display: block; font-size: 44px; line-height: 1.1; color: var(--ink);
+}
+.wrapped-board-shell {
+  display: block; padding: var(--s3) 0;
+  border-block: 1px solid var(--hairline);
+}
+.wrapped-board-meta {
+  display: block; margin-bottom: var(--s2); color: var(--slate);
+}
+/* A split-flap board made of paper, not black plastic. The mechanism (the
+   hinge, the seam, the riffle) is kept — it is the whole charm and it was
+   asked for. What goes is the dark slab, the ten off-token hex values, and
+   both box-shadows: shadows are banned, and this was the only dark object
+   in the product, reading like a screenshot from a different app. */
+.wrapped-board {
+  width: min(100%, 660px); padding: 13px;
+  background: var(--greige);
+  border: 1px solid var(--deckle); border-radius: 7px;
+  display: flex; flex-direction: column; gap: 4px;
+  perspective: 680px;
+}
+.wrapped-board-row {
+  min-width: 0; display: grid; grid-template-columns: repeat(22, minmax(0, 1fr));
+  gap: 4px;
+}
+.wrapped-flap {
+  min-width: 0; aspect-ratio: .74; display: grid; place-items: center;
+  overflow: hidden; color: var(--ink);
+  /* the seam IS the split-flap — one hairline across the hinge, no bevel */
+  background:
+    linear-gradient(transparent calc(50% - .5px), var(--hairline) calc(50% - .5px),
+      var(--hairline) calc(50% + .5px), transparent calc(50% + .5px)),
+    var(--bone);
+  border: 1px solid var(--hairline); border-radius: 3px;
+  font-family: ui-monospace, Menlo, monospace;
+  /* 13px in an 11.5px cell sheared every glyph into a white smear at 390px */
+  font-size: clamp(6px, 2.6vw, 13px);
+  font-weight: 700; line-height: 1; letter-spacing: .08em;
+}
+.wrapped-flap.is-accent {
+  border: 1.5px solid var(--amber);
+  background:
+    linear-gradient(transparent calc(50% - .5px), var(--amber) calc(50% - .5px),
+      var(--amber) calc(50% + .5px), transparent calc(50% + .5px)),
+    var(--tint);
+}
+/* Split-flap settle: each tile hinges down from its top edge and riffles
+   (a couple of over-rotations) before landing. Per-flap --flap-delay and
+   --flap-dur (set in JS with a random diagonal wave) give it organic,
+   non-uniform timing. Declarative CSS only, so it runs without JS timers. */
+.wrapped-flap {
+  transform-origin: center top;
+  backface-visibility: hidden;
+  animation: flap-settle var(--flap-dur, .34s) cubic-bezier(.33, 1.15, .5, 1) both;
+  animation-delay: var(--flap-delay, 0ms);
+}
+@keyframes flap-settle {
+  0%   { transform: rotateX(-90deg); opacity: 0; }
+  32%  { transform: rotateX(26deg);  opacity: 1; }
+  56%  { transform: rotateX(-13deg); }
+  78%  { transform: rotateX(6deg); }
+  100% { transform: rotateX(0deg); opacity: 1; }
+}
+/* Daylight e-ink: no continuous 3D rotation (it ghosts). A gentle two-step
+   fade, same random order, keeps the reveal without smearing. */
+body.calm .wrapped-flap {
+  animation: flap-eink var(--flap-dur, .2s) steps(2, end) both;
+  animation-delay: var(--flap-delay, 0ms);
+  transform: none;
+}
+@keyframes flap-eink { from { opacity: 0; } to { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) {
+  .wrapped-flap, body.calm .wrapped-flap {
+    animation: none; transform: none; opacity: 1;
+  }
+}
+.wrapped-year {
+  display: block; padding: var(--s2) 0;
+  border-bottom: 1px solid var(--hairline);
+}
+.wrapped-y { display: block; font-size: 21px; font-style: italic; }
+
+/* track-note composer (double-click on the waveform) */
+.track-note-editor {
+  position: absolute; top: 34px; width: 240px;
+  font-style: italic; font-size: 14px;
+  z-index: var(--z-consent);
+}
+
+/* waveform zoom reset */
+
+/* attachments */
+.att-img {
+  display: block; max-width: 100%; max-height: 320px;
+  border: 1px solid var(--deckle); border-radius: 3px; margin: var(--s1) 0;
+}
+.att-audio { margin: var(--s1) 0; }
+.att-audio .mono { display: block; margin-bottom: 2px; }
+.att-audio audio { display: block; height: 44px; max-width: 100%; }
+.att-transcript {
+  display: block; margin-top: 2px; font-style: italic; color: var(--graphite);
+  max-width: 58ch;
+}
+.att-chip {
+  display: inline-flex; align-items: center; min-height: 44px;
+  max-width: 100%; white-space: normal; overflow-wrap: anywhere;
+  padding: 0 var(--s2); margin: var(--s1) var(--s1) 0 0;
+  background: var(--greige); border: 1px solid var(--hairline);
+  border-radius: 3px;
+}
+
+/* ---- on this day: the reason to open it tomorrow — a quiet aside ---- */
+
+#onthisday {
+  position: fixed; right: var(--s3); bottom: 96px;
+  z-index: var(--z-surfaced);
+  background: var(--bone); border: 1px solid var(--deckle);
+  border-radius: 4px; padding: var(--s2) var(--s3);
+  max-width: 30rem; width: calc(100% - 32px);
+  max-height: min(70vh, 640px); overflow-y: auto;
+}
+#onthisday .otd-summary {
+  display: flex; width: 100%; min-height: 52px;
+  align-items: baseline; justify-content: space-between; gap: var(--s3);
+  padding: 0; border: none; background: none; text-align: left;
+  color: var(--ink);
+}
+#onthisday .otd-summary > span:first-child {
+  font-size: 17px; font-style: italic;
+}
+#onthisday:not(.open) .otd-head,
+#onthisday:not(.open) .otd-year { display: none; }
+#onthisday.open .otd-summary { display: none; }
+#onthisday:not(.open) {
+  padding-top: 0; padding-bottom: 0;
+}
+#onthisday .otd-head {
+  display: flex; align-items: baseline; justify-content: space-between;
+  color: var(--graphite); letter-spacing: .06em;
+  padding-bottom: var(--s1); border-bottom: 1px solid var(--hairline);
+}
+#onthisday .otd-close {
+  border: none; background: none; color: var(--graphite);
+  font-size: 15px; line-height: 1; padding: 0 2px; cursor: pointer;
+}
+#onthisday .otd-close:hover { color: var(--ink); }
+#onthisday .otd-year {
+  display: block; width: 100%; text-align: left; cursor: pointer;
+  border: none; background: none; border-radius: 0;
+  padding: var(--s2) 2px; border-top: 1px solid var(--hairline);
+}
+#onthisday .otd-year:first-of-type { border-top: none; }
+#onthisday .otd-year:hover { background: var(--greige); }
+#onthisday .otd-year .mono { color: var(--umber); }
+#onthisday .otd-year p {
+  margin: 2px 0 0; font-style: italic; color: var(--ink);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+#onthisday .otd-year p.otd-marked {
+  border-left: 2px solid var(--amber); padding-left: var(--s2);
+}
+
+/* ---- the layer (z-surfaced, arrives from below, recedes) ---- */
+
+#layer {
+  position: absolute; left: 0; right: 0; bottom: 0;
+  background: var(--plate);
+  border-top: 1.5px solid var(--ink);
+  z-index: var(--z-surfaced);
+  transform: translateY(105%);
+  transition: transform var(--settle) var(--press);
+  display: flex; flex-direction: column;
+  max-height: min(82vh, 760px);
+}
+#layer.open { transform: translateY(0); }
+#layer[hidden] { display: none; }
+/* display:none teleported the tab row you just clicked 627px up the screen
+   and deleted the waveform. Collapse instead: the deck keeps its place, so
+   nothing moves more than its own height. */
+#layer.focus-facet #wave { height: 44px; }
+#layer.focus-facet #track-foot,
+#layer.focus-facet #track-readout { display: none; }
+
+/* Landscape tablets and split-screen windows are height-constrained even
+   when their width misses the phone breakpoint. Keep every index and the
+   close control reachable instead of clipping the lower rows off-screen. */
+@media (max-height: 620px) {
+  #layer {
+    max-height: calc(100dvh - 48px);
+    overflow-y: auto;
+    overscroll-behavior-y: contain;
+  }
+}
+
+#track-deck {
+  flex: none; min-width: 0; background: var(--bone);
+  border-bottom: 1px solid var(--deckle);
+}
+#track-head {
+  display: grid; grid-template-columns: 54px minmax(0, 1fr) minmax(170px, auto);
+  gap: var(--s3); align-items: center;
+  min-height: 82px; padding: var(--s2) var(--s4);
+}
+#track-copy, #track-readout {
+  min-width: 0; display: flex; flex-direction: column;
+}
+#track-copy strong {
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  font-size: 22px; font-weight: normal; line-height: 1.2;
+}
+#track-world { color: var(--sienna); }
+#track-summary {
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  margin-top: 2px;
+}
+#track-readout { text-align: right; align-items: flex-end; }
+#track-date { font-size: 16px; font-style: italic; }
+#track-position { margin-top: 2px; font-variant-numeric: tabular-nums; }
+
+#wave {
+  height: 156px; position: relative; flex: none;
+  cursor: pointer; touch-action: none; user-select: none;
+  border-top: 1px solid var(--hairline);
+  border-bottom: 1px solid var(--hairline);
+  background: var(--vellum);
+}
+#wave svg { display: block; width: 100%; height: 100%; }
+
+/* ---- the Z layer: a second sheet over the record ---- */
+/* Depth with no shadow. The plane is vellum in exact register with the
+   ground; the ground recedes as the sheet rises, driven by one scalar. */
+#z-svg {
+  position: absolute; inset: 0; width: 100%; height: 100%;
+  pointer-events: none;           /* the plane is inert; its tabs are not */
+  transition: opacity var(--settle) var(--press),
+              transform var(--settle) var(--press);
+}
+#z-svg .z-tab { pointer-events: auto; cursor: pointer; }
+#z-svg .z-tab:focus-visible { outline: 2px solid var(--amber); outline-offset: 1px; }
+#wave-svg {
+  /* recedes to a whisper under a raised sheet — never fully gone, because
+     the reading is only meaningful against the record it reads */
+  opacity: calc(1 - .78 * var(--z-lift, 0));
+  transition: opacity var(--settle) var(--press);
+}
+/* e-ink: no interpolation between planes. --z-lift is already snapped to
+   0 or 1 in calm mode, so these just remove the tween. */
+body.calm #z-svg, body.calm #wave-svg { transition: none; }
+#wave .z-hint {
+  position: absolute; transform: translate(-50%, 0); bottom: 4px;
+  background: var(--bone); padding: 2px var(--s2);
+  border: 1px solid var(--deckle); color: var(--ink);
+  white-space: nowrap; pointer-events: none; max-width: 92%;
+  overflow: hidden; text-overflow: ellipsis;
+}
+/* The lift control. Not a checkbox — a checkbox in the primary row is the
+   definition of ambient, and uniform boxes are the "early Notion" error.
+   A lowercase z over a rule that fills as the sheet rises. */
+#track-z {
+  border: none; background: none; border-radius: 0;
+  min-height: 44px; min-width: 44px; padding: 0 var(--s1);
+  /* the foot stacks into a column on a phone, which stretched this to the
+     full 366px — a full-width `z` reads like a banner, not a control */
+  flex: 0 0 auto; align-self: flex-start; width: auto;
+  /* laid out in a ROW: stacked (z / rule / count) the glyph and the count
+     read as a fraction — "z over 4" looked like ²⁄₄ on the panel */
+  display: flex; flex-direction: row; align-items: center;
+  justify-content: center; gap: var(--s1);
+  color: var(--graphite); white-space: nowrap;
+}
+#track-z:hover { color: var(--ink); }
+#track-z[aria-pressed="true"] { color: var(--ink); }
+#z-rule {
+  display: block; width: 22px; height: 2px; background: var(--hairline);
+  position: relative;
+}
+#z-rule::after {
+  content: ""; position: absolute; inset: 0; background: var(--ink);
+  transform: scaleX(var(--z-lift, 0)); transform-origin: left center;
+  transition: transform var(--settle) var(--press);
+}
+body.calm #z-rule::after { transition: none; }
+#z-count { color: var(--slate); }
+/* the pen: quiet text until it is holding the sheet, then an ink baseline */
+#track-pen, #track-undo {
+  border: none; background: none; border-radius: 0;
+  min-height: 44px; min-width: 44px; padding: 0 var(--s1);
+  flex: 0 0 auto; align-self: flex-start; width: auto;
+  color: var(--graphite); white-space: nowrap;
+  border-bottom: 2px solid transparent;
+}
+#track-pen:hover, #track-undo:hover { color: var(--ink); }
+#track-pen[aria-pressed="true"] {
+  color: var(--ink); border-bottom-color: var(--ink);
+}
+/* writing on the sheet: the cursor says so, and the plane takes the pen */
+#z-svg.z-writing { cursor: crosshair; }
+#wave.z-lifted { cursor: default; }
+/* The transport is a familiar icon button, separate from the scrub surface
+   so playing never accidentally commits a date jump. */
+#play-btn {
+  width: 52px; height: 52px; min-height: 52px; padding: 14px;
+  border: 1.5px solid var(--ink); border-radius: 50%;
+  background: var(--ink); cursor: pointer;
+}
+#play-btn:hover { background: var(--graphite); }
+#play-btn svg { display: block; width: 100%; height: 100%; }
+#play-btn .tri, #play-btn .bars rect { fill: var(--bone); }
+#play-btn .bars { display: none; }
+#play-btn.playing .tri { display: none; }
+#play-btn.playing .bars { display: block; }
+body.calm #play-btn { width: 56px; height: 56px; padding: 15px; }
+
+#wave .drag-label {
+  position: absolute; transform: translate(-50%, 0); top: 4px;
+  background: var(--bone); padding: 2px var(--s2);
+  border: 1px solid var(--deckle); border-radius: 3px;
+  max-width: calc(100% - 8px); white-space: normal; text-align: center;
+  line-height: 1.3; pointer-events: none;
+  display: none;
+}
+#wave.is-scrubbing { cursor: ew-resize; }
+#wave.is-scrubbing .drag-label {
+  border-color: var(--graphite); border-bottom-width: 2px;
+}
+
+#track-foot {
+  min-height: 52px; display: flex; align-items: center;
+  justify-content: space-between; gap: var(--s3);
+  padding: 4px var(--s4);
+}
+#track-people, #track-ranges {
+  display: flex; align-items: center; gap: var(--s1); min-width: 0;
+}
+.track-person {
+  width: 32px; height: 32px; flex: 0 0 32px;
+  display: inline-flex; align-items: center; justify-content: center;
+  overflow: hidden; border: 1px solid var(--graphite); border-radius: 50%;
+  background: var(--vellum); color: var(--ink);
+  font-size: 11px; letter-spacing: 0;
+}
+.track-person-me { color: var(--bone); background: var(--ink); }
+.track-divider { width: 18px; border-top: 1px solid var(--deckle); }
+#track-ranges { flex: 0 0 auto; }
+#track-ranges button {
+  min-width: 44px; min-height: 44px; padding: 0 var(--s2);
+  border-color: var(--hairline); background: var(--bone); color: var(--graphite);
+}
+#track-ranges button[aria-pressed="true"] {
+  color: var(--bone); background: var(--ink); border-color: var(--ink);
+}
+
+#layer-controls {
+  display: flex; align-items: center; gap: var(--s3);
+  padding: var(--s2) var(--s4); flex-wrap: wrap; flex: none;
+}
+#facets {
+  display: flex; gap: var(--s2); min-width: 0; max-width: 100%;
+  flex: 1 0 100%;
+  overflow-x: auto; overscroll-behavior-inline: contain;
+  scrollbar-width: thin;
+}
+/* facets are tabs, not boxes: presence marked by an ink baseline */
+.facet {
+  border: none; background: none; border-radius: 0;
+  border-bottom: 2px solid transparent; color: var(--graphite);
+  min-width: 44px; flex: 0 0 auto; padding: 0 2px;
+}
+.facet:hover { color: var(--ink); }
+.facet.active { border-bottom-color: var(--ink); color: var(--ink); }
+.desk-call {
+  min-height: 48px; width: 100%; margin-bottom: var(--s2);
+  color: var(--bone); background: var(--ink); border-color: var(--ink);
+  text-align: left; padding: 0 var(--s2);
+}
+.desk-status { margin: 0 0 var(--s2); color: var(--slate); }
+.desk-entry { padding: var(--s2) 0; border-top: 1px solid var(--hairline); }
+.desk-entry > p { margin: 3px 0 var(--s1); }
+.desk-entry > .mono { color: var(--slate); }
+.desk-source { min-height: 44px; padding: 0 var(--s1); }
+#search { flex: 1; min-width: 120px; max-width: 300px; }
+#thread-pick {
+  width: min(280px, 100%); min-width: 220px; max-width: 280px;
+  color: var(--graphite);
+}
+#worlds {
+  max-width: 100%; overflow-x: auto; overscroll-behavior-inline: contain;
+  scrollbar-width: thin;
+}
+#goto-btn, #export-btn, #amber-btn, #guide-btn, #layer-close {
+  border: none; background: none; color: var(--graphite);
+  text-decoration: underline; text-decoration-color: transparent;
+  text-underline-offset: 4px;
+}
+#guide-btn, #layer-close { min-width: 44px; }
+#goto-btn:hover, #export-btn:hover, #amber-btn:hover, #guide-btn:hover,
+#layer-close:hover {
+  color: var(--ink); text-decoration-color: var(--umber);
+}
+#layer-close { margin-left: auto; }
+
+#facet-body {
+  overflow-y: auto; padding: 0 var(--s4) var(--s3);
+  min-height: 0;
+}
+
+/* the ledger */
+.ledger-declare {
+  display: flex; gap: var(--s2); align-items: center;
+  padding: var(--s2) 0; flex-wrap: wrap;
+}
+.ledger-declare select { min-width: 58px; }
+.ledger-declare input { flex: 1; min-width: 200px; font-style: italic; }
+.ledger-bar {
+  display: flex; gap: var(--s2); align-items: center; flex-wrap: wrap;
+  padding: var(--s1) 0 var(--s2); border-bottom: 1px solid var(--hairline);
+}
+.ledger-on { color: var(--ink); text-decoration-color: var(--amber);
+             text-decoration: underline; text-underline-offset: 4px; }
+.ledger-row { position: relative; display: block; padding-left: 34px; }
+.ledger-glyph { position: absolute; left: 4px; top: var(--s2); }
+.ledger-settled .preview { color: var(--umber); text-decoration: line-through;
+                           text-decoration-color: var(--deckle); }
+.ledger-state { position: absolute; right: 4px; top: 4px; min-height: 44px; }
+.ledger-new { color: var(--sienna); font-weight: bold; }
+.ledger-resurf-tag { color: var(--sienna); font-weight: bold; }
+.ledger-resurfaced { border-left: 2px solid var(--amber); padding-left: 32px; }
+.facet.has-new { color: var(--sienna); }
+
+/* the folder door (margins room): quiet, hairlined, never a box */
+.co-strip {
+  display: flex; gap: var(--s2); align-items: center; flex-wrap: wrap;
+  padding: var(--s2) 0; border-bottom: 1px solid var(--hairline);
+}
+.co-strip .co-name { width: 12ch; font-style: italic; }
+.co-strip .co-folder { flex: 1; min-width: 220px; font-style: italic; }
+.co-note { color: var(--sienna); flex: 1 1 100%; }
+.co-aside { flex: 1 1 100%; margin: 0; font-size: 13px; }
+.co-head { color: var(--slate); letter-spacing: .08em; margin: var(--s3) 0 0; }
+.note-share { min-height: 44px; padding: 0 var(--s1); color: var(--graphite); }
+.co-consent {
+  display: inline-flex; gap: var(--s1); align-items: center; flex-wrap: wrap;
+  margin-top: var(--s1);
+}
+.journal-offered { border-left: 2px dashed var(--slate); }
+.journal-ours { border-left: 3px double var(--ink); }
+.journal-separate { border-left: 1px solid var(--deckle); color: var(--slate); }
+
+/* chapters facet */
+.chapter-add {
+  display: flex; gap: var(--s2); align-items: center;
+  padding: var(--s2) 0 var(--s3);
+}
+.chapter-add input { flex: 1; max-width: 320px; font-style: italic; }
+.chapter-row { display: flex; align-items: baseline; gap: var(--s2); }
+.chapter-title { flex: 1; text-align: left; font-size: 17px; color: var(--ink); }
+.chapter-del { color: var(--umber); min-width: 44px; }
+.transcribe-btn { min-height: 44px; padding: 0; }
+#facet-body[hidden] { display: none; }
+
+.panel-row {
+  display: block; width: 100%; text-align: left;
+  border: none; border-bottom: 1px solid var(--hairline);
+  background: transparent; border-radius: 0;
+  padding: var(--s2) var(--s1); min-height: 44px;
+}
+.panel-row:hover { background: var(--tint); }
+.panel-row .preview { display: block; }
+.panel-row .meta { display: block; margin-top: 1px; }
+.panel-row .urls { display: block; margin-top: 2px; }
+.panel-row .urls a { color: var(--sienna); font-size: 12px; word-break: break-all; }
+.more { margin-top: var(--s2); width: 100%; }
+.aside { font-style: italic; color: var(--slate); }
+
+/* images facet: a contact sheet */
+#panel-body.grid {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(84px, 1fr));
+  gap: var(--s1); padding-top: var(--s2);
+}
+.thumb {
+  padding: 0; min-height: 84px; background: var(--greige);
+  border: 1px solid var(--deckle); border-radius: 3px; overflow: hidden;
+}
+.thumb img { width: 100%; height: 84px; object-fit: cover; display: block; }
+.thumb .mono { display: block; padding: var(--s1); word-break: break-all; }
+
+/* export dialog */
+#export {
+  position: absolute; top: var(--s3); left: 50%; transform: translateX(-50%);
+  background: var(--bone); padding: var(--s3);
+  border-radius: 4px; z-index: var(--z-consent);
+  display: none; max-width: 46ch;
+}
+#export.open { display: block; }
+#export p { margin: 0 0 var(--s2); }
+.export-range {
+  display: flex; gap: var(--s2); align-items: center; flex-wrap: wrap;
+  margin-bottom: var(--s2);
+}
+.export-range label { display: inline-flex; align-items: center; gap: var(--s1); }
+.export-range input[type="date"] { min-height: 44px; }
+.export-pins input { width: 18px; height: 18px; min-height: 0; accent-color: var(--amber); }
+.export-actions { display: flex; gap: var(--s2); flex-wrap: wrap; }
+#export-note { min-height: 1em; margin: var(--s2) 0 0; }
+
+/* go-to-date popover */
+#goto {
+  position: absolute; top: var(--s3); left: 50%; transform: translateX(-50%);
+  background: var(--bone); padding: var(--s3);
+  border-radius: 4px; z-index: var(--z-consent);
+  display: none;
+}
+#goto.open { display: block; }
+#goto .months { display: grid; grid-template-columns: repeat(4, 1fr); gap: var(--s1); margin-top: var(--s2); }
+#goto .months button { min-width: 52px; }
+#goto .years { display: flex; gap: var(--s1); align-items: center; justify-content: center; }
+#goto .years button { min-width: 44px; }
+#goto .year-label { min-width: 64px; text-align: center; font-size: 16px; color: var(--ink); }
+
+/* calm mode: the DC-1 evening register. Bigger warm serif, timestamps
+   present without hover (touch has no hover), keyboard chrome gone. */
+body.calm { font-size: 18px; }
+body.calm .msg { max-width: 56ch; }
+body.calm .msg .when { opacity: 1; }
+body.calm #ground-hint { display: none; }
+body.calm #chronology { flex-basis: 76px; }
+
+/* consent / error card */
+.card {
+  max-width: 52ch; margin: var(--s6) auto; padding: var(--s4);
+  background: var(--bone); border-radius: 4px;
+}
+.card p { margin: 0 0 var(--s2); }
+.card .aside { font-style: italic; color: var(--slate); }
+
+/* suffix adoption (STEP 6b): asks only — an overlay, not a ground
+   replacement, so the timeline stays usable behind it */
+#adopt-card {
+  position: fixed; inset: 0; z-index: var(--z-consent);
+  display: flex; align-items: center; justify-content: center;
+  padding: var(--s3);
+  background: color-mix(in srgb, var(--ink) 26%, transparent);
+}
+#adopt-card .card { width: min(38rem, 100%); margin: 0; }
+#adopt-card .row { display: flex; gap: var(--s2); }
+
+/* touch pass: small inline controls earn full hit areas invisibly */
+.reply-to::after {
+  /* grow into dead space only — the sender line above and the message's
+     first text line below must stay clickable */
+  content: ""; position: absolute; inset: -4px -10px -6px;
+}
+#onthisday .otd-close { min-width: 44px; min-height: 44px; }
+.export-pins { display: inline-flex; align-items: center; min-height: 44px; }
+
+/* ---- the summons: vow door 3 — the card that shows the payload ---------
+   A consent surface, so it lives at the consent layer and speaks in
+   proposal grammar: dashed border until something is real. Grayscale-safe:
+   the stretch band is a border form, not a hue. */
+
+.msg .summon-btn {
+  display: none; position: absolute; top: -4px; right: 192px;
+  min-height: 44px; min-width: 44px; padding: 0 var(--s1);
+}
+.msg.selected .summon-btn, .msg:hover .summon-btn { display: inline-block; }
+
+/* the stretch: the run of messages a summons would carry — a drawn band,
+   legible in grayscale (form: inset rule + tint, not hue alone) */
+.msg.stretched {
+  background: var(--tint);
+  border-left: 3px solid var(--ink);
+}
+
+#summon {
+  position: fixed; inset: 0; z-index: var(--z-consent);
+  display: flex; align-items: center; justify-content: center;
+  padding: var(--s3);
+  /* a scrim, so the ground reads inert while consent is open — dimming is
+     form, not hue: it survives grayscale */
+  background: color-mix(in srgb, var(--ink) 26%, transparent);
+}
+.summon-card {
+  width: min(38rem, 100%); max-height: 86vh; overflow-y: auto;
+  background: var(--bone); border: 1.5px dashed var(--ink);
+  border-radius: 4px; padding: var(--s3);
+  display: flex; flex-direction: column; gap: var(--s2);
+}
+.summon-head {
+  display: flex; justify-content: space-between; align-items: center;
+  color: var(--slate); letter-spacing: .08em;
+}
+.summon-close { min-width: 44px; min-height: 44px; }
+.summon-lenses { display: flex; gap: var(--s1); flex-wrap: wrap; }
+.summon-lens { min-height: 44px; padding: 0 var(--s2); }
+.summon-lens.current {
+  border: 1.5px solid var(--ink); border-radius: 3px;
+  text-decoration: none;
+}
+.summon-question {
+  font: inherit; color: var(--ink); background: var(--vellum);
+  border: 1px solid var(--hairline); border-radius: 3px;
+  padding: var(--s1) var(--s2); width: 100%; resize: vertical;
+}
+.summon-payload-head { color: var(--slate); margin: 0; }
+.summon-payload {
+  border: 1px solid var(--hairline); border-radius: 3px;
+  background: var(--vellum); padding: var(--s2);
+  max-height: 38vh; overflow-y: auto;
+  display: flex; flex-direction: column; gap: var(--s2);
+}
+.summon-msg .mono { font-size: 11px; color: var(--slate); }
+/* never clamp payload text: every character that will cross must be
+   readable before the two taps — the box itself scrolls */
+.summon-msg p { margin: 2px 0 0; white-space: pre-wrap; }
+.summon-go {
+  min-height: 44px; align-self: flex-start; padding: 0 var(--s3);
+  white-space: normal; text-align: left;
+}
+.summon-go[data-armed="1"] {
+  border-color: var(--amber); color: var(--amber);
+}
+.summon-note { color: var(--slate); margin: 0; white-space: pre-line; }
+.summon-answer { white-space: pre-wrap; margin: 0; }
+.summon-interview-q { margin: 0; font-style: italic; }
+.summon-closing { font-style: normal; }
+.summon-kept { color: var(--slate); margin: 0; }
+.summon-line { font-style: italic; }
+/* the unfolded interview in the margins room: q italic slate, a plain ink —
+   meaning carried by form, legible in grayscale */
+.summon-transcript { display: block; margin: var(--s1) 0; }
+.summon-transcript .summon-tq {
+  display: block; font-style: italic; color: var(--slate);
+}
+.summon-transcript .summon-ta { display: block; margin-bottom: var(--s1); }
+
+/* the named door to the summons in the margins room — a full-width verb,
+   not a hover secret; hidden entirely where the summons doesn't exist */
+.summon-door {
+  display: block; width: 100%; min-height: 44px; text-align: left;
+  padding: var(--s1) var(--s2); margin-bottom: var(--s2);
+  border: 1.5px dashed var(--ink); border-radius: 3px;
+}
+
+/* the desk hand's actions — labeled destinations, 44px, form not hue.
+   The true destination is on the button (label above, value + host
+   below), never a hover secret — the DC-1 has no hover. */
+.summon-actions { display: flex; flex-direction: column; gap: var(--s1);
+  margin-top: var(--s1); }
+.summon-action {
+  min-height: 44px; display: flex; flex-direction: column; gap: 2px;
+  text-align: left; padding: var(--s1) var(--s2);
+  border: 1px solid var(--hairline); border-radius: 3px;
+  background: var(--bone); width: 100%;
+}
+.summon-action-label { display: block; }
+.summon-action-dest { display: block; font-size: 11px; color: var(--slate); }
+.summon-action-flat { display: block; padding: var(--s1) var(--s2);
+  color: var(--slate); }
+
+/* the worlds switch — step into one transport at a time; a visible row of
+   chips, not a buried dropdown. Current world is filled ink (form, not hue). */
+#worlds { display: inline-flex; gap: var(--s1); align-items: center; }
+#worlds:empty { display: none; }
+.world-chip {
+  min-height: 44px; padding: 0 var(--s2); font: inherit;
+  color: var(--slate); background: none; border: 1px solid var(--hairline);
+  border-radius: 3px; letter-spacing: .04em;
+}
+.world-chip.current {
+  color: var(--bone); background: var(--ink); border-color: var(--ink);
+}
+
+/* resume-reading pill — an offer to jump back to a bookmark, never a
+   jump on its own. Dashed = a proposal, like every unconfirmed thing. */
+.resume-pill {
+  position: fixed; left: 50%; transform: translateX(-50%); bottom: 96px;
+  z-index: var(--z-surfaced); min-height: 44px; padding: 0 var(--s3);
+  font: inherit; color: var(--ink); background: var(--bone);
+  border: 1.5px dashed var(--amber); border-radius: 999px;
+}
+.resume-pill:hover { border-style: solid; }
+
+/* a brief confirmation toast (bookmark dropped) — silent, self-dismissing */
+.wl-toast {
+  position: fixed; left: 50%; transform: translateX(-50%); bottom: 96px;
+  z-index: var(--z-consent); padding: var(--s1) var(--s3);
+  color: var(--bone); background: var(--ink); border-radius: 999px;
+  font-size: 13px;
+}
+
+@media (max-width: 720px) {
+  /* On a phone the row scrolled horizontally with no visible scrollbar, so
+     3 of the 8 indexes (media, threads, wrapped) were served but
+     unreachable — the exact bug class this project already paid for once.
+     Eight quiet tabs wrap onto two ink baselines and fit 390px. */
+  #facets {
+    flex-wrap: wrap; row-gap: var(--s1);
+    overflow-x: visible; overscroll-behavior-inline: auto;
+  }
+  header { padding: var(--s2); gap: var(--s2); }
+  header h1 { min-width: 0; }
+  header h1 em {
+    display: block; max-width: 70vw; margin-left: 0;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  #ground-hint { display: none; }
+  .arrival-signal { top: 72px; }
+  #chronology { flex-basis: 52px; }
+  #chronology-position { left: 4px; width: 36px; }
+  #chronology-preview {
+    left: calc(100% + 6px); width: min(280px, calc(100vw - 70px));
+    min-width: 0; padding: var(--s2);
+  }
+  body.calm #chronology { flex-basis: 60px; }
+  #timeline { padding: var(--s2); }
+  #bubble { padding: var(--s2); }
+  #bubble-rest, #bubble-card {
+    width: 100%; max-width: 100%; margin-left: 0;
+  }
+  .msg { max-width: calc(100vw - 24px); }
+  .msg.mine { margin-left: var(--s3); }
+  .msg.theirs { margin-right: var(--s3); }
+
+  #layer { max-height: min(88vh, 760px); }
+  #track-head {
+    grid-template-columns: 48px minmax(0, 1fr);
+    gap: var(--s2); min-height: 76px; padding: var(--s2);
+  }
+  #play-btn { width: 48px; height: 48px; min-height: 48px; padding: 13px; }
+  #track-copy strong { font-size: 19px; }
+  #track-readout {
+    grid-column: 1 / -1; flex-direction: row; align-items: baseline;
+    justify-content: space-between; gap: var(--s2); text-align: left;
+    padding-top: var(--s1); border-top: 1px solid var(--hairline);
+  }
+  #track-date {
+    min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  #wave { height: 132px; }
+  #track-foot {
+    min-height: 0; align-items: stretch; flex-direction: column;
+    gap: var(--s1); padding: var(--s1) var(--s2) var(--s2);
+  }
+  #track-people { min-height: 36px; }
+  #track-ranges { width: 100%; }
+  #track-ranges > .mono { flex: 1; }
+  #track-ranges button { flex: 0 1 58px; padding: 0 var(--s1); }
+
+  #layer-controls { gap: var(--s1); padding: var(--s1) var(--s2) var(--s2); }
+  #facets { flex: 1 0 100%; }
+  #search { flex: 1 0 100%; max-width: none; width: 100%; }
+  #worlds { flex: 1 0 100%; }
+  #thread-pick {
+    flex: 1 1 180px; width: auto; max-width: none; min-width: 0;
+  }
+  #layer-close { margin-left: 0; }
+  #facet-body { padding: 0 var(--s2) var(--s2); }
+  .resume-pill, .wl-toast { max-width: calc(100vw - 24px); text-align: center; }
+  .track-note-editor { width: calc(100% - 16px); }
+}
