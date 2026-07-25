@@ -1,0 +1,17 @@
+{
+  "name": "zettel-server",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Zettel's boundary: identity, pairing, and Z-layer sync. Never message content.",
+  "scripts": {
+    "test": "node --test 'test/*.test.js'",
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "db:local": "wrangler d1 execute zettel --local --file=./schema.sql",
+    "db:remote": "wrangler d1 execute zettel --remote --file=./schema.sql"
+  },
+  "devDependencies": {
+    "wrangler": "^3.90.0"
+  }
+}

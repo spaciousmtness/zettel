@@ -111,10 +111,11 @@ h1 em { font-style: italic; color: var(--sienna); }
 .cta .free { margin-top: 10px; }
 .cta .try { display: inline-block; margin-left: 14px; font-size: 16px; }
 
-/* ---- early access: the door, and the two ways through it ----
+/* ---- the door, and the ways through it ----
    House rule, borrowed from the app: a control that cannot do its job is
-   ABSENT, not inert. The SSO row renders only when a provider is actually
-   configured below, so nobody ever taps a dead button. */
+   ABSENT, not inert. The SSO row is drawn from the API's own /health
+   answer, so a provider that cannot complete a sign-in is never painted
+   and nobody ever taps a dead button. */
 .door { max-width: 30rem; margin: 26px auto 0; text-align: left;
         border: 1.5px solid var(--ink); border-radius: 5px;
         background: var(--bone); padding: 20px 22px; }
@@ -218,21 +219,21 @@ a { color: var(--sienna); }
     </div>
 
     <div class="cta">
-      <a class="get" href="#door">Get early access →</a>
+      <a class="get" href="#door">Sign in →</a>
       <a class="try" href="./app/">or try the demo — no signup →</a>
       <p class="free mono">the demo is a synthetic archive of invented people ·
         nothing sends · runs in your browser</p>
     </div>
 
     <div class="door" id="door">
-      <h2>early access</h2>
+      <h2 id="door-head">sign in</h2>
 
-      <!-- Rendered only when a provider is configured. See AUTH below. -->
+      <!-- Rendered only for providers the API reports as live. -->
       <div class="sso" id="sso" hidden>
-        <button type="button" data-provider="google">
+        <button type="button" data-provider="google" hidden>
           <span class="g" aria-hidden="true">G</span> Continue with Google
         </button>
-        <button type="button" data-provider="apple">
+        <button type="button" data-provider="apple" hidden>
           <span class="g" aria-hidden="true"></span> Continue with Apple
         </button>
       </div>
@@ -241,26 +242,40 @@ a { color: var(--sienna); }
       <form id="join" novalidate>
         <label class="field">
           <span class="mono">email</span>
-          <input type="email" id="join-email" name="email" required
+          <input type="email" id="join-email" name="email"
                  autocomplete="email" inputmode="email"
                  placeholder="you@example.com">
         </label>
+        <button type="button" class="join" id="join-email-go">
+          Email me a link</button>
+
+        <p class="or mono">or</p>
+
         <label class="field">
-          <span class="mono">phone — optional, for the iOS beta</span>
+          <span class="mono">phone — country code and all</span>
           <input type="tel" id="join-phone" name="phone"
                  autocomplete="tel" inputmode="tel"
                  placeholder="+1 555 000 0000">
         </label>
-        <button type="submit" class="join" id="join-go">Request access</button>
+        <label class="field" id="code-field" hidden>
+          <span class="mono">the six digits we just sent</span>
+          <input type="text" id="join-code" name="code" inputmode="numeric"
+                 autocomplete="one-time-code" maxlength="6"
+                 pattern="[0-9]{6}" placeholder="000000">
+        </label>
+        <button type="button" class="join" id="join-phone-go">
+          Text me a code</button>
+
         <output class="say mono" id="join-say" role="status"
                 aria-live="polite"></output>
       </form>
 
-      <p class="fine">Your address is used to send you access and nothing else.
-        Zettel reads your archive on your own machine — signing up does not
-        upload a single message, and there is nothing here to opt out of
-        later. <a href="https://github.com/spaciousmtness/zettel">Source on
-        GitHub</a>.</p>
+      <p class="fine">Signing in creates an account for your <em>annotations</em>
+        — the marks, the ink, the chapters. It does not upload a single
+        message: Zettel reads your archive on your own machine, read-only, and
+        the sync carries sealed notes anchored to timestamps, never the
+        conversation they sit over.
+        <a href="https://github.com/spaciousmtness/zettel">Source on GitHub</a>.</p>
     </div>
   </header>
 
@@ -487,72 +502,59 @@ a { color: var(--sienna); }
 </script>
 
 <script>
-/* ---- the door: early access ------------------------------------------
+/* ---- the door -------------------------------------------------------
  *
- * This page is a static file on GitHub Pages. There is no server here, so
- * there is no honest way to complete a real sign-in on this origin alone —
- * an SSO button that "logs you in" against nothing is theatre, and the
- * whole product is a promise about what does and does not leave a machine.
+ * This page is a static file on GitHub Pages; the API is a Worker at its
+ * own origin (server/ in this repo). One constant joins them.
  *
- * So the door is built to be wired, not faked:
+ *   API — the Worker's origin. Empty means "no backend yet", and the door
+ *     says so plainly instead of swallowing an address into nowhere. Never
+ *     let someone believe they signed in when they did not.
  *
- *   ENDPOINT — anything that accepts a POST of {email, phone, source}.
- *     A Cloudflare Worker, a Formspree/Tally form id, a Lambda URL. Set it
- *     and the form is live; leave it empty and the form says plainly that
- *     the list is not open yet rather than swallowing an address into
- *     nowhere. Never let someone believe they signed up when they did not.
- *
- *   AUTH — a real OAuth client id per provider. Absent, the SSO row does
- *     not render at all. That is the app's own law ("absent, not inert"),
- *     and it is also the only honest option: a provider button cannot work
- *     without a backend to exchange and verify the token.
- *
- * Everything below the config is transport-agnostic and does not change
- * when the backend arrives.
+ * Which SSO providers appear is decided by the SERVER, not by this file:
+ * GET /health reports what is actually configured, and a provider that
+ * cannot complete is never drawn. That is the app's own law — absent, not
+ * inert — and here it is also the only honest option, since a provider
+ * button without a backend to verify its token is a button that lies.
  */
 (function () {
   "use strict";
 
-  var ENDPOINT = "";            // e.g. "https://join.zettel.ink/access"
-  var AUTH = { google: "", apple: "" };   // OAuth client ids
+  var API = "";                 // e.g. "https://api.zettel.ink"
 
-  var form  = document.getElementById("join");
-  var email = document.getElementById("join-email");
-  var phone = document.getElementById("join-phone");
-  var go    = document.getElementById("join-go");
-  var say   = document.getElementById("join-say");
-  var sso   = document.getElementById("sso");
-  var or    = document.getElementById("or");
+  var form     = document.getElementById("join");
+  var email    = document.getElementById("join-email");
+  var phone    = document.getElementById("join-phone");
+  var code     = document.getElementById("join-code");
+  var codeWrap = document.getElementById("code-field");
+  var emailGo  = document.getElementById("join-email-go");
+  var phoneGo  = document.getElementById("join-phone-go");
+  var say      = document.getElementById("join-say");
+  var sso      = document.getElementById("sso");
+  var or       = document.getElementById("or");
   if (!form) return;
 
   function tell(text, tone) {
     say.textContent = text;
-    if (tone) say.setAttribute("data-tone", tone);
-    else say.removeAttribute("data-tone");
+    if (tone) say.setAttribute("data-tone", tone); else say.removeAttribute("data-tone");
   }
 
-  /* Deliberately permissive: one @, a dot in the domain, no spaces. A
-     stricter pattern rejects real addresses (+ tags, new TLDs, unicode
-     locals) and the only cost of a loose one is a bounced invite. */
+  /* Deliberately permissive. A stricter pattern rejects real addresses
+     (+tags, new TLDs, unicode locals) and the only cost of a loose one is a
+     bounced invite. The server normalises properly either way. */
   function emailOk(v) { return /^[^\s@]+@[^\s@.]+\.[^\s@]{2,}$/.test(v.trim()); }
 
-  /* Optional field: blank is valid. Otherwise 8–15 digits, which covers
-     E.164 without pretending to know the caller's country. */
+  /* Requires a country code, exactly as the server does — better to ask
+     here than to have the API refuse something the page implied was fine. */
   function phoneOk(v) {
-    var t = v.trim();
-    if (!t) return true;
-    var digits = t.replace(/[^\d]/g, "");
-    return digits.length >= 8 && digits.length <= 15;
+    var t = v.trim().replace(/^00/, "+");
+    return /^\+[1-9][\d\s\-().]{7,20}$/.test(t);
   }
 
   function mark(el, ok) {
-    if (ok) el.removeAttribute("aria-invalid");
-    else el.setAttribute("aria-invalid", "true");
+    if (ok) el.removeAttribute("aria-invalid"); else el.setAttribute("aria-invalid", "true");
     return ok;
   }
-
-  /* re-validating on input clears a stale red border as soon as it is
-     earned back, rather than leaving it until the next submit */
   email.addEventListener("input", function () {
     if (email.getAttribute("aria-invalid")) mark(email, emailOk(email.value));
   });
@@ -560,78 +562,152 @@ a { color: var(--sienna); }
     if (phone.getAttribute("aria-invalid")) mark(phone, phoneOk(phone.value));
   });
 
-  // Only render providers that could actually complete. An unconfigured
-  // button is worse than no button: it teaches the reader that the
-  // product's controls lie.
-  var live = [].slice.call(sso.querySelectorAll("button")).filter(function (b) {
-    var on = !!AUTH[b.dataset.provider];
-    if (!on) b.remove();
-    return on;
-  });
-  if (live.length) {
-    sso.hidden = false;
-    or.hidden = false;
-    live.forEach(function (b) {
-      b.addEventListener("click", function () {
-        // The redirect belongs to whatever backend verifies the token; this
-        // page only knows where to send them.
-        location.href = "/auth/" + b.dataset.provider;
-      });
-    });
+  function busy(button, on, restingLabel) {
+    button.disabled = on;
+    if (on) { button.dataset.rest = button.textContent; button.textContent = "…"; }
+    else { button.textContent = restingLabel || button.dataset.rest || button.textContent; }
   }
 
-  form.addEventListener("submit", function (e) {
-    e.preventDefault();
-    var okEmail = mark(email, emailOk(email.value));
-    var okPhone = mark(phone, phoneOk(phone.value));
-    if (!okEmail) { tell("that address doesn't look complete", "bad"); email.focus(); return; }
-    if (!okPhone) { tell("that number doesn't look complete — or leave it blank", "bad"); phone.focus(); return; }
+  /* Credentials ride in an httpOnly cookie, so every call is same-site
+     credentialed. A hung request must never leave a button dead forever. */
+  function api(path, options) {
+    var controller = new AbortController();
+    var timer = setTimeout(function () { controller.abort(); }, 15000);
+    return fetch(API + path, Object.assign({
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      signal: controller.signal,
+    }, options || {})).then(function (r) {
+      clearTimeout(timer);
+      return r.json().catch(function () { return {}; }).then(function (body) {
+        return { ok: r.ok, status: r.status, body: body };
+      });
+    }, function (e) { clearTimeout(timer); throw e; });
+  }
 
-    if (!ENDPOINT) {
-      // The honest empty state. Say what did NOT happen.
-      tell("the list isn't open yet — nothing was sent, and your address " +
-           "was not stored anywhere", "bad");
+  function offline() {
+    tell("the door isn't open yet — nothing was sent, and nothing was stored", "bad");
+  }
+
+  function trouble(result) {
+    tell((result && result.body && result.body.error && result.body.error.message)
+      || "couldn't reach the door — try again in a moment", "bad");
+  }
+
+  /* Ask the server which ways in actually exist. A provider only appears
+     once the server has said it can complete the flow. */
+  if (API) {
+    api("/health").then(function (result) {
+      var live = (result.body && result.body.providers) || {};
+      var any = false;
+      [].slice.call(sso.querySelectorAll("button")).forEach(function (b) {
+        if (live[b.dataset.provider]) {
+          b.hidden = false;
+          any = true;
+          b.addEventListener("click", function () {
+            location.href = API + "/auth/" + b.dataset.provider + "/start";
+          });
+        } else {
+          b.remove();
+        }
+      });
+      if (any) { sso.hidden = false; or.hidden = false; }
+    }).catch(function () { /* no providers drawn; email and phone still work */ });
+  }
+
+  emailGo.addEventListener("click", function () {
+    if (!mark(email, emailOk(email.value))) {
+      tell("that address doesn't look complete", "bad"); email.focus(); return;
+    }
+    if (!API) return offline();
+    busy(emailGo, true);
+    api("/auth/email/start", {
+      method: "POST",
+      body: JSON.stringify({ email: email.value.trim() }),
+    }).then(function (result) {
+      busy(emailGo, false, "Email me a link");
+      if (!result.ok) return trouble(result);
+      /* The same words whether or not the address is known — the server
+         answers identically on purpose, and the copy has to match or the
+         page reintroduces the enumeration oracle the API just closed. */
+      tell("check your inbox — the link works once, for fifteen minutes");
+    }).catch(function () {
+      busy(emailGo, false, "Email me a link");
+      tell("couldn't reach the door — try again in a moment", "bad");
+    });
+  });
+
+  var awaitingCode = false;
+
+  phoneGo.addEventListener("click", function () {
+    if (!mark(phone, phoneOk(phone.value))) {
+      tell("that number needs a country code — like +1 555 000 0000", "bad");
+      phone.focus(); return;
+    }
+    if (!API) return offline();
+
+    if (!awaitingCode) {
+      busy(phoneGo, true);
+      api("/auth/phone/start", {
+        method: "POST",
+        body: JSON.stringify({ phone: phone.value.trim() }),
+      }).then(function (result) {
+        busy(phoneGo, false, "Verify and sign in");
+        if (!result.ok) return trouble(result);
+        awaitingCode = true;
+        codeWrap.hidden = false;
+        code.focus();
+        tell("we sent six digits — they expire in ten minutes");
+      }).catch(function () {
+        busy(phoneGo, false, "Text me a code");
+        tell("couldn't reach the door — try again in a moment", "bad");
+      });
       return;
     }
 
-    go.disabled = true;
-    var resting = go.textContent;
-    go.textContent = "sending…";
-    tell("");
-
-    var done = false;
-    // A hung request must not leave the button dead forever.
-    var timer = setTimeout(function () {
-      if (done) return;
-      done = true;
-      go.disabled = false; go.textContent = resting;
-      tell("that took too long — try again?", "bad");
-    }, 15000);
-
-    fetch(ENDPOINT, {
+    if (!/^\d{6}$/.test(code.value.trim())) {
+      mark(code, false); tell("six digits", "bad"); code.focus(); return;
+    }
+    mark(code, true);
+    busy(phoneGo, true);
+    api("/auth/phone/verify", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        email: email.value.trim(),
-        phone: phone.value.trim(),
-        source: "landing",
-      }),
-    }).then(function (r) {
-      if (done) return;
-      done = true; clearTimeout(timer);
-      if (!r.ok) throw new Error(String(r.status));
-      form.textContent = "";
-      var p = document.createElement("p");
-      p.textContent = "You're on the list. We'll write to " +
-        email.value.trim() + " when your seat is ready.";
-      form.append(p);
+      body: JSON.stringify({ phone: phone.value.trim(), code: code.value.trim() }),
+    }).then(function (result) {
+      if (result.ok) { location.href = "./app/"; return; }
+      busy(phoneGo, false, "Verify and sign in");
+      trouble(result);
+      /* A burned code cannot be retried — send them back to the start
+         rather than letting them type into a field that can never pass. */
+      if (result.status === 429) {
+        awaitingCode = false;
+        codeWrap.hidden = true;
+        code.value = "";
+        busy(phoneGo, false, "Text me a code");
+      }
     }).catch(function () {
-      if (done) return;
-      done = true; clearTimeout(timer);
-      go.disabled = false; go.textContent = resting;
-      tell("couldn't reach the list — try again in a moment", "bad");
+      busy(phoneGo, false, "Verify and sign in");
+      tell("couldn't reach the door — try again in a moment", "bad");
     });
   });
+
+  code.addEventListener("keydown", function (e) {
+    if (e.key === "Enter") { e.preventDefault(); phoneGo.click(); }
+  });
+  email.addEventListener("keydown", function (e) {
+    if (e.key === "Enter") { e.preventDefault(); emailGo.click(); }
+  });
+  form.addEventListener("submit", function (e) { e.preventDefault(); });
+
+  /* A bounced sign-in comes back as ?signin=<why>. Say what happened
+     rather than dropping someone on the page with no explanation. */
+  var why = new URLSearchParams(location.search).get("signin");
+  if (why) {
+    tell(why === "expired" ? "that link had already been used — here's a fresh start"
+       : why === "state"   ? "that sign-in didn't finish safely — try once more"
+       : "that sign-in didn't complete — try once more", "bad");
+    document.getElementById("door").scrollIntoView({ block: "center" });
+  }
 })();
 </script>
 </body>

@@ -1,0 +1,76 @@
+name: ci
+
+# The repo had no checks at all, which meant every claim about it was a
+# claim about the last time somebody looked. These are cheap and they run
+# on every push, so "it parses" and "the boundary holds" stop being things
+# anyone has to remember to verify.
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+
+jobs:
+  client:
+    name: client parses
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      # The demo bundle ships as hand-written ES modules with no build step,
+      # so a syntax error reaches GitHub Pages and the app is simply blank.
+      # This is the whole safety net that layer has today.
+      - name: every module parses
+        run: |
+          for file in app/*.js; do
+            echo "· $file"
+            node --check "$file"
+          done
+
+      # index.html carries two inline scripts. They are not covered by the
+      # loop above, and one of them is now the sign-in door.
+      - name: inline scripts parse
+        run: |
+          node -e '
+            const fs = require("fs");
+            const html = fs.readFileSync("index.html", "utf8");
+            const blocks = [...html.matchAll(/<script>([\s\S]*?)<\/script>/g)];
+            if (!blocks.length) { console.error("no inline scripts found"); process.exit(1); }
+            blocks.forEach((m, i) => {
+              try { new Function(m[1]); console.log(`· inline script ${i + 1} ok`); }
+              catch (e) { console.error(`inline script ${i + 1}: ${e.message}`); process.exit(1); }
+            });
+          '
+
+      # The demo is a synthetic archive of invented people and the README
+      # says so in public. This is that promise, enforced: any North
+      # American number in the tree that is not a 555 reserved number fails
+      # the build.
+      - name: no real phone numbers in the demo bundle
+        run: |
+          if grep -rEo '\+1[0-9]{10}' app/ | grep -v '555555' ; then
+            echo "::error::a non-555 phone number is in the demo bundle"
+            exit 1
+          fi
+          echo "· only reserved 555 numbers present"
+
+  server:
+    name: server tests
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: server
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      # No dependencies are needed to run these: the suite stands up D1 and
+      # KV on node:sqlite and an in-memory map, so the auth and sync flows
+      # are exercised end to end without a Cloudflare account or a network.
+      - name: test
+        run: node --test 'test/*.test.js'

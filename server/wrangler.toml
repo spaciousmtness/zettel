@@ -1,0 +1,44 @@
+name = "zettel-api"
+main = "src/index.js"
+compatibility_date = "2026-07-01"
+# nodejs_compat is deliberately NOT enabled. Everything here runs on
+# WebCrypto and the fetch API, which keeps the runtime surface small — and a
+# small runtime surface is the cheapest thing you will ever do for an audit.
+
+[vars]
+ENVIRONMENT = "development"
+PUBLIC_ORIGIN = "http://localhost:8787"
+# Origins allowed to send credentialed requests. Never "*": the browser
+# refuses a wildcard with credentials anyway, and a reflected origin plus
+# Allow-Credentials is the classic route to account takeover.
+ALLOWED_ORIGINS = "http://localhost:8788"
+MAIL_FROM = "hello@zettel.ink"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "zettel"
+database_id = "set-me-after-wrangler-d1-create"
+
+[[kv_namespaces]]
+binding = "RATE"
+id = "set-me-after-wrangler-kv-namespace-create"
+
+# ---- production ------------------------------------------------------------
+[env.production.vars]
+ENVIRONMENT = "production"
+PUBLIC_ORIGIN = "https://zettel.ink"
+ALLOWED_ORIGINS = "https://zettel.ink"
+MAIL_FROM = "hello@zettel.ink"
+
+# Secrets are NEVER in this file. Set each with `wrangler secret put NAME`:
+#
+#   RESEND_API_KEY        email delivery
+#   TWILIO_ACCOUNT_SID    sms delivery
+#   TWILIO_AUTH_TOKEN
+#   TWILIO_FROM
+#   GOOGLE_CLIENT_ID      omit both and the Google button does not render
+#   GOOGLE_CLIENT_SECRET
+#   APPLE_CLIENT_ID       omit any of the four and Apple does not render
+#   APPLE_TEAM_ID
+#   APPLE_KEY_ID
+#   APPLE_PRIVATE_KEY     the .p8 contents, newlines and all
