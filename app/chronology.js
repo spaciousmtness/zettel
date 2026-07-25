@@ -293,6 +293,12 @@ export class ChronologyRail {
       const preferred = cluster.items.find((item) => item.live) ||
         cluster.items.find((item) => item.kind === "mark") ||
         cluster.items.find((item) => item.kind === "note") || cluster.items[0];
+      // The button's face, label, tooltip and click target all speak for
+      // `preferred`; the preview did not. cluster.items comes back in
+      // ascending-ts order, so showPreview's items[0] was the EARLIEST
+      // annotation in the cell — hovering a live mark could describe a note
+      // from years before it. Same order, preferred first.
+      const ordered = [preferred, ...cluster.items.filter((i) => i !== preferred)];
       const button = document.createElement("button");
       button.type = "button";
       button.className = `chronology-landmark chronology-${preferred.kind}` +
@@ -319,7 +325,7 @@ export class ChronologyRail {
         ? `${date} - ${preferred.preview.slice(0, 100)}` : date;
       button.addEventListener("pointerdown", (event) => event.stopPropagation());
       button.addEventListener("pointerenter", () => {
-        this.showPreview(preferred.ts, cluster.items, cluster.y);
+        this.showPreview(preferred.ts, ordered, cluster.y);
         this.onHover(preferred.rowid ?? null);
       });
       button.addEventListener("pointerleave", () => {
@@ -327,7 +333,7 @@ export class ChronologyRail {
         this.onHover(null);
       });
       button.addEventListener("focus", () =>
-        this.showPreview(preferred.ts, cluster.items, cluster.y));
+        this.showPreview(preferred.ts, ordered, cluster.y));
       button.addEventListener("blur", () => this.hidePreview());
       button.addEventListener("click", () =>
         this.commit(preferred.ts, preferred.rowid ?? null));

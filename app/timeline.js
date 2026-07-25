@@ -520,7 +520,21 @@ export class Timeline {
           const d = await res.json();
           if (!res.ok) throw new Error(d.error);
           pinBtn.textContent = d.dry ? "would send ✓ (demo)" : "pinned ✓";
-          if (d.sent) setTimeout(() => this.jumpToLatest(), 2500);
+          if (d.sent) {
+            // Snapshot the place we acted in. This deferred jump captured
+            // nothing and read this.chat at FIRE time, so seconds after a
+            // pinback it yanked the reader to the live edge of whatever
+            // thread they had moved to. Every other line in this handler
+            // pins the row's identity for exactly that reason; the jump did
+            // not. Any navigation bumps epoch, so a reader who stayed put
+            // still gets it.
+            const myChat = this.chat, myEpoch = this.epoch;
+            setTimeout(() => {
+              if (this.chat === myChat && this.epoch === myEpoch) {
+                this.jumpToLatest();
+              }
+            }, 2500);
+          }
         } catch (err) {
           pinBtn.textContent = err.message.slice(0, 40);
           setTimeout(() => { pinBtn.textContent = "◆"; }, 4000);
@@ -569,7 +583,21 @@ export class Timeline {
           m.state = "resurfaced";
           row.classList.add("resurfaced");
           this.onMarksChange();  // re-light it on the waveform + ledger
-          if (d.sent) setTimeout(() => this.jumpToLatest(), 2600);
+          if (d.sent) {
+            // Snapshot the place we acted in. This deferred jump captured
+            // nothing and read this.chat at FIRE time, so seconds after a
+            // pinback it yanked the reader to the live edge of whatever
+            // thread they had moved to. Every other line in this handler
+            // pins the row's identity for exactly that reason; the jump did
+            // not. Any navigation bumps epoch, so a reader who stayed put
+            // still gets it.
+            const myChat = this.chat, myEpoch = this.epoch;
+            setTimeout(() => {
+              if (this.chat === myChat && this.epoch === myEpoch) {
+                this.jumpToLatest();
+              }
+            }, 2600);
+          }
         } catch (err) {
           reigBtn.textContent = err.message.slice(0, 40);
           setTimeout(() => { reigBtn.textContent = "↻"; }, 4000);

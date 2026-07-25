@@ -843,6 +843,8 @@
           var s = states[String(m.rowid)];
           return s ? Object.assign({}, m, { state: s }) : m;
         });
+        // the same ledger /api/markers serves, reignited rows included
+        growReignited(localMarks, states, c.messages);
         var rows;
         if (pinsOnly) {
           var emoji = typeof pinsOnly === "string" &&
@@ -1161,28 +1163,37 @@
         var markers = (data.markers || []).map(function (m) {
           return Object.assign({}, m, { state: states[String(m.rowid)] || "live" });
         });
-        // reignite re-pins a moment that never carried an emoji — the
-        // server grows the ledger for it, so this must too
-        var seen = {};
-        markers.forEach(function (m) { seen[m.rowid] = true; });
-        Object.keys(states).forEach(function (rid) {
-          if (states[rid] !== "resurfaced" || seen[rid]) return;
-          for (var i = 0; i < c.messages.length; i++) {
-            var m = c.messages[i];
-            if (String(m.rowid) !== rid) continue;
-            markers.push({
-              rowid: m.rowid, date_unix: m.date_unix,
-              preview: (m.text || "[no text]").replace(/\s+/g, " ")
-                .trim().slice(0, 120),
-              source: "reignite", from_me: !!m.from_me,
-              emoji: MARKS[0], state: "resurfaced",
-            });
-            break;
-          }
-        });
+        growReignited(markers, states, c.messages);
         markers.sort(function (a, b) { return a.date_unix - b.date_unix; });
         return { markers: markers };
       });
+  }
+
+  /* reignite re-pins a moment that never carried an emoji — the server grows
+     the ledger for it, so this must too.
+     ONE home for that rule. It used to live only inside mergeMarkers, so
+     /api/markers grew the synthesised row and /api/export?pins=1 did not:
+     "copy the minutes" silently dropped every reignited moment, and the two
+     routes reading the same keep-local store disagreed about what was in it. */
+  function growReignited(markers, states, messages) {
+    var seen = {};
+    markers.forEach(function (m) { seen[m.rowid] = true; });
+    Object.keys(states).forEach(function (rid) {
+      if (states[rid] !== "resurfaced" || seen[rid]) return;
+      for (var i = 0; i < messages.length; i++) {
+        var m = messages[i];
+        if (String(m.rowid) !== rid) continue;
+        markers.push({
+          rowid: m.rowid, date_unix: m.date_unix,
+          preview: (m.text || "[no text]").replace(/\s+/g, " ")
+            .trim().slice(0, 120),
+          source: "reignite", from_me: !!m.from_me,
+          emoji: MARKS[0], state: "resurfaced",
+        });
+        break;
+      }
+    });
+    return markers;
   }
 
   function mergeInks(data, identifier) {

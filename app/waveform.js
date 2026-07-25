@@ -143,6 +143,15 @@ export class Waveform {
     // conversation itself is the track, with "me" above, "them" below,
     // and authored mark comments riding a dedicated rail above the sound.
     const mid = h * 0.61;
+    // Everything vertical here derives from h EXCEPT the annotation rail,
+    // which was hardcoded in pixels tuned for the 156px track. The wrapped
+    // index sets #layer.focus-facet, which drops #wave to 44px — and at that
+    // height mid is 26.8, so `mid - 46` went NEGATIVE and every note dot
+    // (51-82) and chapter title (67) fell outside the viewBox and was
+    // clipped away entirely. One scale factor, capped at 1, so the 156px
+    // layout is bit-identical and anything shorter compresses instead of
+    // spilling.
+    const k = Math.min(1, h / 156);
     const span = this.t1 - this.t0;
 
     // midline
@@ -166,8 +175,8 @@ export class Waveform {
     }
     let maxN = 1;
     for (const v of buckets.values()) maxN = Math.max(maxN, v.me, v.them);
-    const upMax = mid - 46;         // keep the authored-comment rail clear
-    const downMax = h - mid - 17;   // room for date labels below
+    const upMax = Math.max(2, mid - 46 * k);   // keep the comment rail clear
+    const downMax = Math.max(2, h - mid - 17 * k); // room for date labels
 
     for (const [b, v] of buckets) {
       const ts = this.t0 + (b + 0.5) * bucketSecs;
@@ -246,7 +255,7 @@ export class Waveform {
       const moment = Math.floor(n.date_unix);
       const stack = notesAtMoment.get(moment) || 0;
       notesAtMoment.set(moment, stack + 1);
-      const noteY = isTrack ? 58 + Math.min(stack, 3) * 8 : 51;
+      const noteY = (isTrack ? 58 + Math.min(stack, 3) * 8 : 51) * k;
       dot.setAttribute("cx", x); dot.setAttribute("cy", noteY);
       dot.setAttribute("r", isTrack ? 3.6 : 2.2);
       if (isTrack) {
@@ -315,7 +324,7 @@ export class Waveform {
       this.svg.appendChild(rule);
       const title = document.createElementNS(SVGNS, "text");
       title.setAttribute("x", x + 5);
-      title.setAttribute("y", 67);
+      title.setAttribute("y", 67 * k);
       title.setAttribute("fill", "var(--graphite)");
       title.setAttribute("font-size", "10");
       title.setAttribute("font-style", "italic");

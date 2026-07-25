@@ -31,8 +31,15 @@ button, select, input {
   border: 1.5px solid var(--ink); border-radius: 3px;
   min-height: 44px; padding: 0 var(--s2); cursor: pointer;
 }
+/* CONTROL EDGES vs SEPARATORS.
+   --hairline and --deckle are paper-ramp rules, meant for the line BETWEEN
+   things. Used as the boundary of an interactive control they measure
+   1.34-1.67:1 against their own ground, under a 3:1 floor — and because this
+   design system bans shadows outright, that border is the ONLY thing saying
+   "this is a control". --umber is 3.54:1 on bone and still reads as quiet.
+   Separators below keep the hairline; only the edges you can press moved. */
 select, input {
-  border: 1px solid var(--deckle); background: var(--bone);
+  border: 1px solid var(--umber); background: var(--bone);
 }
 button.quiet {
   border: none; background: none; color: var(--graphite);
@@ -859,7 +866,7 @@ body.calm #play-btn { width: 56px; height: 56px; padding: 15px; }
 #track-ranges { flex: 0 0 auto; }
 #track-ranges button {
   min-width: 44px; min-height: 44px; padding: 0 var(--s2);
-  border-color: var(--hairline); background: var(--bone); color: var(--graphite);
+  border-color: var(--umber); background: var(--bone); color: var(--graphite);
 }
 #track-ranges button[aria-pressed="true"] {
   color: var(--bone); background: var(--ink); border-color: var(--ink);
@@ -1118,7 +1125,7 @@ body.calm #chronology { flex-basis: 76px; }
 }
 .summon-question {
   font: inherit; color: var(--ink); background: var(--vellum);
-  border: 1px solid var(--hairline); border-radius: 3px;
+  border: 1px solid var(--umber); border-radius: 3px;
   padding: var(--s1) var(--s2); width: 100%; resize: vertical;
 }
 .summon-payload-head { color: var(--slate); margin: 0; }
@@ -1169,7 +1176,7 @@ body.calm #chronology { flex-basis: 76px; }
 .summon-action {
   min-height: 44px; display: flex; flex-direction: column; gap: 2px;
   text-align: left; padding: var(--s1) var(--s2);
-  border: 1px solid var(--hairline); border-radius: 3px;
+  border: 1px solid var(--umber); border-radius: 3px;
   background: var(--bone); width: 100%;
 }
 .summon-action-label { display: block; }
@@ -1183,7 +1190,7 @@ body.calm #chronology { flex-basis: 76px; }
 #worlds:empty { display: none; }
 .world-chip {
   min-height: 44px; padding: 0 var(--s2); font: inherit;
-  color: var(--slate); background: none; border: 1px solid var(--hairline);
+  color: var(--slate); background: none; border: 1px solid var(--umber);
   border-radius: 3px; letter-spacing: .04em;
 }
 .world-chip.current {
