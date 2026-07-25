@@ -1,27 +1,407 @@
-<!doctype html><html lang="en"><head><meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Zettel</title><meta name="theme-color" content="#f6f2e9">
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Zettel — your most important thread, as a decision ledger</title>
+<meta name="description" content="Zettel turns your most important conversation into a decision ledger — mark it, search it, pull the minutes. All on your own Mac. Nothing leaves.">
+<meta property="og:title" content="Zettel — a decision ledger for your most important thread">
+<meta property="og:description" content="Mark a decision with an emoji you already send. Zettel turns your thread into a searchable ledger — on your own Mac, nothing leaves.">
 <style>
-:root{--bone:#faf8f2;--vellum:#f6f2e9;--ink:#1c1a15;--slate:#6f685c;
---hairline:#d8d1c1;--amber:#e8720c}
-html,body{margin:0;height:100%;background:var(--vellum);color:var(--ink);
-font:16px/1.5 Georgia,'Iowan Old Style',serif}
-main{max-width:34rem;margin:0 auto;padding:18vh 1.5rem}
-h1{font-size:22px;font-weight:400;letter-spacing:.02em;margin:0 0 .25rem}
-.m{font:11px/1.6 ui-monospace,Menlo,monospace;letter-spacing:.08em;color:var(--slate)}
-p{margin:1.1rem 0}
-hr{border:0;border-top:1px solid var(--hairline);margin:1.6rem 0}
-.w{display:inline-block;width:8px;height:8px;border-radius:50%;
-background:var(--amber);opacity:.34;animation:b 2.6s ease-in-out infinite}
-@keyframes b{0%,100%{opacity:.20}50%{opacity:.55}}
-@media(prefers-reduced-motion:reduce){.w{animation:none}}
-</style></head><body><main>
-<p class="m">〰️ zettel · for your messages archive</p>
-<h1>Zettel</h1>
-<p class="m">read a conversation as a track</p>
-<hr>
-<p>Drag a year in one gesture. Mark the moments that mattered. Then lift a
-reading off your own record — a second sheet over the conversation that shows
-you the questions nobody answered and the silences you both kept.</p>
-<p class="m"><span class="w"></span> &nbsp;the demo is being placed here now</p>
-</main></body></html>
+:root {
+  --bone:#faf8f2; --vellum:#f6f2e9; --plate:#f4f0e7; --greige:#efe9db;
+  --deckle:#c9c2b2; --ink:#1c1a15; --graphite:#57514a; --slate:#6f685c;
+  --umber:#8a8376; --hairline:#d8d1c1; --amber:#e8720c; --sienna:#b34d00;
+  --tint:rgba(232,114,12,.08);
+}
+* { box-sizing: border-box; margin: 0; }
+html { scroll-behavior: smooth; }
+body {
+  background: var(--vellum); color: var(--ink);
+  font-family: Georgia, 'Iowan Old Style', serif;
+  font-size: 18px; line-height: 1.55;
+  -webkit-font-smoothing: antialiased;
+}
+.mono { font-family: ui-monospace, Menlo, monospace; font-size: 11.5px;
+        letter-spacing: .09em; color: var(--slate); text-transform: uppercase; }
+.wrap { max-width: 52rem; margin: 0 auto; padding: 0 24px; }
+
+/* ---- hero ---- */
+header.hero { padding: 7vh 0 3vh; text-align: center; }
+.kicker { margin-bottom: 20px; }
+h1 { font-size: clamp(32px, 6vw, 52px); font-weight: normal; line-height: 1.1;
+     letter-spacing: -0.01em; }
+h1 em { font-style: italic; color: var(--sienna); }
+.sub { font-size: clamp(17px, 2.4vw, 21px); color: var(--graphite);
+       max-width: 34rem; margin: 20px auto 0; }
+
+/* ---- the demo stage: a self-running Zettel ---- */
+.stage {
+  margin: 40px auto 0; max-width: 46rem;
+  border: 1.5px solid var(--ink); border-radius: 6px;
+  background: var(--bone); overflow: hidden; position: relative;
+}
+.stage-bar {
+  display: flex; align-items: center; gap: 8px;
+  padding: 9px 14px; border-bottom: 1px solid var(--hairline);
+  background: var(--plate);
+}
+.stage-bar .dot { width: 9px; height: 9px; border-radius: 50%;
+                  border: 1px solid var(--deckle); }
+.stage-bar .title { font-family: ui-monospace, Menlo, monospace;
+                    font-size: 11px; color: var(--slate); margin-left: 6px;
+                    letter-spacing: .06em; }
+.stage-cap { margin-left: auto; font-family: ui-monospace, Menlo, monospace;
+             font-size: 10.5px; color: var(--umber); letter-spacing: .08em;
+             min-height: 13px; text-align: right; transition: opacity .4s; }
+
+/* the message stream */
+.demo-stream { height: 190px; overflow: hidden; padding: 14px 20px 0;
+               position: relative; }
+.demo-msg { margin: 0 0 11px; max-width: 30rem; opacity: 0;
+            transform: translateY(6px); transition: opacity .5s, transform .5s; }
+.demo-msg.show { opacity: 1; transform: none; }
+.demo-msg.mine { margin-left: auto; border-left: 2px solid var(--ink);
+                 padding-left: 12px; }
+.demo-msg .who { font-family: ui-monospace, Menlo, monospace; font-size: 10px;
+                 color: var(--slate); letter-spacing: .07em; display: block; }
+.demo-msg .txt { font-size: 15px; }
+.demo-msg.ignite { position: relative; border-radius: 4px;
+                   border: 1.5px solid var(--amber); padding: 4px 10px; }
+.demo-msg.ignite::before {
+  content: ""; position: absolute; inset: -1px; border-radius: 4px;
+  background: var(--amber); z-index: -1;
+  animation: breathe 2.6s ease-in-out infinite; }
+@keyframes breathe { 0%,100%{opacity:.12} 50%{opacity:.30} }
+
+/* the ledger card that slides up */
+.demo-ledger {
+  position: absolute; left: 20px; right: 20px; bottom: -140px;
+  background: var(--bone); border: 1.5px solid var(--ink); border-radius: 5px;
+  padding: 12px 16px; transition: bottom .5s cubic-bezier(.2,.8,.2,1); }
+.demo-ledger.up { bottom: 14px; }
+.demo-ledger .lh { font-family: ui-monospace, Menlo, monospace; font-size: 10px;
+                   letter-spacing: .09em; color: var(--slate); margin-bottom: 6px; }
+.demo-ledger .row { display: flex; align-items: baseline; gap: 8px; margin: 4px 0;
+                    font-size: 14px; }
+.demo-ledger .row .g { font-size: 13px; }
+.demo-minutes {
+  font-family: ui-monospace, Menlo, monospace; font-size: 10.5px;
+  color: var(--graphite); white-space: pre; line-height: 1.5;
+  background: var(--plate); border-radius: 3px; padding: 8px 10px; margin-top: 8px;
+  max-height: 0; overflow: hidden; transition: max-height .5s ease; }
+.demo-minutes.open { max-height: 120px; }
+
+/* the waveform */
+.demo-wave { height: 96px; border-top: 1px solid var(--hairline);
+             background: var(--vellum); position: relative; }
+.demo-wave svg { width: 100%; height: 100%; display: block; }
+
+.stage-hint { text-align: center; font-family: ui-monospace, Menlo, monospace;
+              font-size: 10.5px; color: var(--umber); padding: 8px;
+              letter-spacing: .08em; border-top: 1px solid var(--hairline); }
+
+/* ---- CTA ---- */
+.cta { text-align: center; margin: 36px 0 8px; }
+.cta a.get {
+  display: inline-block; border: 1.5px solid var(--ink); border-radius: 5px;
+  background: var(--ink); color: var(--vellum); text-decoration: none;
+  padding: 14px 30px; font-size: 19px; }
+.cta a.get:hover { background: var(--sienna); border-color: var(--sienna); }
+.cta .free { margin-top: 10px; }
+
+/* ---- sections ---- */
+section { padding: 44px 0; border-top: 1px solid var(--hairline); }
+h2 { font-size: 15px; font-weight: normal; font-style: italic;
+     color: var(--slate); margin-bottom: 10px; }
+.feat h3 { font-size: 23px; font-weight: normal; margin: 24px 0 4px; }
+.feat h3:first-of-type { margin-top: 0; }
+.feat p { color: var(--graphite); max-width: 40rem; }
+.feat .keys { font-family: ui-monospace, Menlo, monospace; font-size: 12px;
+              color: var(--sienna); }
+
+.vow { border: 1.5px solid var(--ink); border-radius: 5px; background: var(--bone);
+       padding: 24px 28px; }
+.vow p { font-size: 20px; } .vow p + p { margin-top: 10px; color: var(--graphite);
+       font-size: 16px; }
+
+/* install steps */
+ol.steps { margin: 12px 0 0; padding-left: 22px; }
+ol.steps li { margin: 10px 0; color: var(--graphite); }
+ol.steps code { font-family: ui-monospace, Menlo, monospace; font-size: 13px;
+                background: var(--plate); padding: 1px 5px; border-radius: 3px;
+                color: var(--ink); }
+
+footer { padding: 40px 0 60px; }
+footer .mono { text-transform: none; }
+a { color: var(--sienna); }
+
+@media (prefers-reduced-motion: reduce) {
+  * { animation: none !important; transition: none !important; }
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="hero">
+    <p class="kicker mono">〰️ Zettel · for your Messages archive · macOS</p>
+    <h1>Your most important thread,<br><em>as a decision ledger.</em></h1>
+    <p class="sub">Mark a decision with an emoji you already send.
+    Zettel turns years of texts into a searchable ledger of every
+    decision you two ever made — on your own Mac, nothing leaves.</p>
+
+    <!-- the demo stage: it plays the product on its own -->
+    <div class="stage" id="stage" aria-label="Zettel demo">
+      <div class="stage-bar">
+        <span class="dot"></span><span class="dot"></span><span class="dot"></span>
+        <span class="title">Zettel</span>
+        <span class="stage-cap mono" id="cap"></span>
+      </div>
+      <div class="demo-stream" id="stream">
+        <div class="demo-ledger" id="ledger">
+          <div class="lh">📌 THE LEDGER · decisions</div>
+          <div class="row"><span class="g">📌</span> We ship Friday, no new scope.</div>
+          <div class="row"><span class="g">🔥</span> The waveform is the hero.</div>
+          <div class="row"><span class="g">❓</span> <span style="color:var(--umber);text-decoration:line-through">Do we need a logo?</span> <span class="mono" style="text-transform:none">answered</span></div>
+          <div class="demo-minutes mono" id="minutes"># the minutes
+📌 We ship Friday, no new scope.
+🔥 The waveform is the hero.
+✓ copied to clipboard</div>
+        </div>
+      </div>
+      <div class="demo-wave"><svg id="wave" viewBox="0 0 640 96" preserveAspectRatio="none"></svg></div>
+      <div class="stage-hint">▴ this is a live mock — the real app runs on your Mac</div>
+    </div>
+
+    <div class="cta">
+      <a class="get" href="./app/">Try the live demo →</a>
+      <p class="free mono">a synthetic archive of invented people · nothing sends ·
+        runs in your browser</p>
+      <p class="free mono"><a href="https://github.com/spaciousmtness/zettel"
+        style="color:inherit">source on GitHub</a> · macOS app reads your own
+        archive in place, read-only</p>
+    </div>
+  </header>
+
+  <section class="feat">
+    <h2>what it does</h2>
+    <h3>📌 The pin becomes a ledger</h3>
+    <p>Send 📌, 🔥, or ❓ in your messages like you already do — Zettel turns
+    each into a glowing marker on your timeline and a row in a living
+    decision ledger. Declare a fresh decision and it writes back into the
+    real thread; you both see it. Then <span class="keys">copy the minutes</span>
+    — the whole ledger drops out as clean markdown, ready for the doc.</p>
+
+    <h3>🔎 Search that actually works</h3>
+    <p>Everything Apple's search forgets: <span class="keys">"exact phrase"
+    · from:them · after:2024-01-01 · has:link · in:all</span> — across one
+    thread or every conversation you've ever had. Even words that were only
+    <em>spoken</em>: voice memos transcribe on your own machine.</p>
+
+    <h3>〰️ A decade as one waveform</h3>
+    <p>Your whole thread as a track — your voice above the line, theirs
+    below. Scrub years in a second, name the chapters, press space and it
+    plays itself. The instrument your most important conversation never had.</p>
+  </section>
+
+  <section>
+    <div class="vow">
+      <p>By default, nothing leaves your Mac — no account, no server of
+      ours, and the archive is read-only. Your margins stay private on
+      your machine. Turn the wifi off — everything still works.</p>
+      <p>Three exceptions exist, each a door only you can open.
+      <strong>Your wifi:</strong> <code>--share</code> serves your archive
+      to a device on your own network, over plain HTTP — a wifi you
+      trust, never one you share with strangers.
+      <strong>Your folder:</strong> if you and one other person choose to
+      co-annotate a thread, only the notes you each explicitly promote
+      sync — through a folder in a cloud you choose and control; those
+      bytes pass through that company's servers, not ours, and revoking
+      the folder ends it.
+      <strong>Your summons:</strong> when you call on an outside mind — a
+      question to Claude, a parcel tracker, a forecast — exactly what you
+      selected travels to that one service, and the summons shows you the
+      payload before it goes. Nothing is scanned, watched, or sent
+      without your two taps.</p>
+      <p>Every exception is a loan, not an amendment: as capability comes
+      home to your Mac, the crossings retire.</p>
+    </div>
+  </section>
+
+  <section id="get">
+    <h2>getting it onto your Mac</h2>
+    <p style="color:var(--graphite);max-width:40rem">Zettel isn't in the
+    App Store — it can't be; Apple sandboxes App Store apps away from your
+    Messages archive, which is the whole point. So it's a small, open,
+    notarization-pending download. Four steps:</p>
+    <ol class="steps">
+      <li>Download and <strong>unzip</strong> <code>wavelength.zip</code>.</li>
+      <li><strong>Right-click</strong> <code>Wavelength.command</code> →
+      <strong>Open</strong> → <strong>Open</strong>. (Right-click, not
+      double-click — macOS blocks unsigned apps opened the normal way. This
+      is the one awkward step until we notarize.)</li>
+      <li>Grant Terminal <strong>Full Disk Access</strong> when asked
+      (System Settings → Privacy &amp; Security → Full Disk Access → add
+      Terminal), then run it once more. This is macOS asking <em>your</em>
+      permission to read <em>your</em> messages — nothing is sent anywhere.</li>
+      <li>Needs <strong>Python 3</strong> (most Macs have it; if not, the
+      launcher tells you where to get it).</li>
+    </ol>
+  </section>
+
+  <footer>
+    <p class="mono">Made by two people and their eleven-year thread.
+    Not affiliated with Apple. Messages is a trademark of Apple Inc.
+    Your data is yours; it never touches our machines because we don't
+    have any.</p>
+  </footer>
+
+</div>
+
+<script>
+// A self-running mock of the core loop. Living Paper: warm, silent, amber.
+(function () {
+  var reduce = window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
+  var svg = document.getElementById('wave');
+  var NS = 'http://www.w3.org/2000/svg';
+  var W = 640, H = 96, mid = H * 0.54;
+
+  // deterministic two-voice waveform
+  var seed = 11, rand = function () { seed = (seed * 16807) % 2147483647; return seed / 2147483647; };
+  var bars = [];
+  for (var x = 8; x < W - 6; x += 6) {
+    var era = 0.3 + 0.7 * Math.abs(Math.sin(x / 70));
+    var up = 3 + rand() * 34 * era, down = 3 + rand() * 32 * era;
+    var b = document.createElementNS(NS, 'line');
+    b.setAttribute('x1', x); b.setAttribute('x2', x);
+    b.setAttribute('y1', mid - up); b.setAttribute('y2', mid + down);
+    b.setAttribute('stroke', 'var(--graphite)');
+    b.setAttribute('stroke-opacity', '.4');
+    b.setAttribute('stroke-width', '2.4');
+    b.setAttribute('stroke-linecap', 'round');
+    svg.appendChild(b);
+    bars.push({ el: b, x: x });
+  }
+  // midline
+  var ml = document.createElementNS(NS, 'line');
+  ml.setAttribute('x1', 0); ml.setAttribute('x2', W);
+  ml.setAttribute('y1', mid); ml.setAttribute('y2', mid);
+  ml.setAttribute('stroke', 'var(--hairline)');
+  svg.appendChild(ml);
+  // three pin diamonds at fixed spots
+  var pins = [140, 360, 545].map(function (px) {
+    var halo = document.createElementNS(NS, 'circle');
+    halo.setAttribute('cx', px); halo.setAttribute('cy', 10); halo.setAttribute('r', 8);
+    halo.setAttribute('fill', 'var(--amber)'); halo.setAttribute('opacity', '0');
+    var d = document.createElementNS(NS, 'rect');
+    d.setAttribute('x', -3.5); d.setAttribute('y', -3.5);
+    d.setAttribute('width', 7); d.setAttribute('height', 7);
+    d.setAttribute('transform', 'translate(' + px + ' 10) rotate(45)');
+    d.setAttribute('fill', 'var(--amber)'); d.setAttribute('stroke', 'var(--ink)');
+    d.setAttribute('opacity', '0');
+    svg.appendChild(halo); svg.appendChild(d);
+    return { x: px, halo: halo, d: d };
+  });
+  // playhead
+  var head = document.createElementNS(NS, 'line');
+  head.setAttribute('y1', 0); head.setAttribute('y2', H);
+  head.setAttribute('stroke', 'var(--ink)'); head.setAttribute('stroke-width', '1.5');
+  head.setAttribute('x1', -5); head.setAttribute('x2', -5);
+  svg.appendChild(head);
+
+  var cap = document.getElementById('cap');
+  var stream = document.getElementById('stream');
+  var ledger = document.getElementById('ledger');
+  var minutes = document.getElementById('minutes');
+
+  var msgs = [
+    { who: 'them', txt: 'ok so are we locking Friday or not' },
+    { who: 'me', txt: "yes. shipping Friday, no new scope." },
+    { who: 'them', txt: 'love it. pinning that 📌', pin: true },
+    { who: 'me', txt: 'the waveform should be the hero 🔥' },
+  ];
+
+  function setCap(t) { cap.style.opacity = 0; setTimeout(function () { cap.textContent = t; cap.style.opacity = 1; }, 200); }
+
+  function renderMsgs(done) {
+    // clear prior
+    [].slice.call(stream.querySelectorAll('.demo-msg')).forEach(function (n) { n.remove(); });
+    var i = 0;
+    (function next() {
+      if (i >= msgs.length) { setTimeout(done, 500); return; }
+      var m = msgs[i];
+      var el = document.createElement('div');
+      el.className = 'demo-msg ' + (m.who === 'me' ? 'mine' : 'theirs');
+      el.innerHTML = '<span class="who">' + m.who + '</span><span class="txt">' + m.txt + '</span>';
+      stream.insertBefore(el, ledger);
+      setTimeout(function () { el.classList.add('show'); }, 20);
+      if (m.pin) el._pin = true;
+      i++;
+      setTimeout(next, reduce ? 200 : 850);
+    })();
+  }
+
+  function ignitePin() {
+    setCap('a pin lands →');
+    var mine = stream.querySelector('.demo-msg.theirs:nth-last-of-type(2)') ||
+               stream.querySelectorAll('.demo-msg')[2];
+    if (mine) mine.classList.add('ignite');
+    // light pin #2 on the wave
+    pins.forEach(function (p) { p.halo.setAttribute('opacity', '.28'); p.d.setAttribute('opacity', '1'); });
+  }
+
+  function sweep(done) {
+    setCap('press space — it plays');
+    // timer-driven, not rAF: rAF pauses in backgrounded tabs (and stalls in
+    // some embedded webviews), which would freeze the loop mid-sweep
+    var dur = reduce ? 10 : 2600, step = 40, k = 0;
+    var iv = setInterval(function () {
+      k = Math.min(1, k + step / dur);
+      var hx = 8 + k * (W - 16);
+      head.setAttribute('x1', hx); head.setAttribute('x2', hx);
+      bars.forEach(function (b) {
+        var played = b.x <= hx;
+        b.el.setAttribute('stroke', played ? 'var(--amber)' : 'var(--graphite)');
+        b.el.setAttribute('stroke-opacity', played ? '.8' : '.4');
+      });
+      if (k >= 1) { clearInterval(iv); done(); }
+    }, step);
+  }
+
+  function showLedger(done) {
+    setCap('the ledger');
+    ledger.classList.add('up');
+    setTimeout(function () {
+      setCap('copy the minutes →');
+      minutes.classList.add('open');
+      setTimeout(done, reduce ? 300 : 2200);
+    }, reduce ? 200 : 1200);
+  }
+
+  function reset() {
+    ledger.classList.remove('up'); minutes.classList.remove('open');
+    pins.forEach(function (p) { p.halo.setAttribute('opacity', '0'); p.d.setAttribute('opacity', '0'); });
+    bars.forEach(function (b) { b.el.setAttribute('stroke', 'var(--graphite)'); b.el.setAttribute('stroke-opacity', '.4'); });
+    head.setAttribute('x1', -5); head.setAttribute('x2', -5);
+  }
+
+  function loop() {
+    reset(); setCap('eleven years, one thread');
+    renderMsgs(function () {
+      ignitePin();
+      setTimeout(function () {
+        sweep(function () {
+          showLedger(function () {
+            setCap('runs entirely on your Mac');
+            setTimeout(loop, reduce ? 1200 : 3000);
+          });
+        });
+      }, reduce ? 300 : 1100);
+    });
+  }
+  loop();
+})();
+</script>
+</body>
+</html>
