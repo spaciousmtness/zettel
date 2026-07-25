@@ -12,6 +12,31 @@ conversation is ever on a server.
 
 ---
 
+## Run it on your own archive (macOS)
+
+```sh
+git clone https://github.com/spaciousmtness/zettel.git
+cd zettel && python3 serve.py        # or double-click Zettel.command
+```
+
+Open **http://localhost:8477**. The first run will ask for Full Disk
+Access — that is macOS asking *your* permission to read *your* messages
+(System Settings → Privacy & Security → Full Disk Access → Terminal, then
+quit Terminal fully and rerun). Nothing is sent anywhere; the server binds
+127.0.0.1 and opens the archive read-only.
+
+The same files serve the public demo: `app/demo.js` probes `/api/health`
+once and passes everything through when a real server answers. No build,
+no flags, no second bundle.
+
+`serve.py` is a clean-room rebuild of the original hackathon server's read
+side, written from the API contract the demo shim documents. Sending,
+summons, handwriting OCR and the shared-folder co-layer still live only in
+the original Wavelength folder — those verbs answer 501 with an honest
+sentence until that code is recovered or rewritten.
+
+---
+
 ## The Z layer
 
 Annotation is usually a mark *on* a record. Here it is a **second sheet laid

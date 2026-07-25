@@ -54,6 +54,34 @@
   var nativeFetch = window.fetch.bind(window);
   demo.nativeFetch = nativeFetch;
 
+  /* ---- live or demo? ----------------------------------------------------
+     One build, two grounds. On GitHub Pages there is no server, and every
+     /api/ call must be answered from snapshots. On a Mac running serve.py,
+     the SAME files must pass every call through untouched — that server is
+     reading the real archive, and a snapshot answering in its place would
+     silently show a stranger's invented life over your own.
+
+     The probe is one GET /api/health with the shim's own nativeFetch: a
+     real server answers 200 JSON, Pages answers 404, file:// throws. The
+     decision lands before the app's first fetch resolves, because health
+     IS the app's first fetch and it awaits us. */
+  var LIVE = null;   // null = undecided; sync call sites treat only false as demo
+  var modeP = nativeFetch("/api/health", { cache: "no-store" })
+    .then(function (r) { return r.ok; })
+    .catch(function () { return false; })
+    .then(function (ok) {
+      LIVE = ok;
+      demo.live = ok;
+      if (ok) {
+        // attachments come from the real server, not the snapshot map
+        window.__demoAtt = function (rowid, variant) {
+          return "/api/attachments/" + rowid + (variant || "");
+        };
+      }
+      return ok;
+    });
+  demo.liveP = modeP;
+
   /* ---- the keep-local store ------------------------------------------- */
 
   function lsGet(name, fallback) {
@@ -1296,11 +1324,16 @@
     var mine = info.url.origin === location.origin &&
       (p.indexOf("/api/") === 0 || p.indexOf(BASE + "api/") === 0);
     if (!mine) return nativeFetch(input, init);
-    try {
-      return handle(info, input, init);
-    } catch (e) {
-      return Promise.resolve(miss(routeOf(p) || p, p, { error: String(e) }));
-    }
+    // live: every /api/ call passes through untouched, headers and all —
+    // installApiSecurity wrapped US, so its CSRF header rides along intact
+    return modeP.then(function (live) {
+      if (live) return nativeFetch(input, init);
+      try {
+        return handle(info, input, init);
+      } catch (e) {
+        return miss(routeOf(p) || p, p, { error: String(e) });
+      }
+    });
   };
 
   /* ==== the page itself ================================================ */
@@ -1373,7 +1406,7 @@
   }
   window.open = function (url, target, features) {
     var raw = String(url === undefined || url === null ? "" : url);
-    if (isCard(raw)) {
+    if (isCard(raw) && LIVE === false) {
       var sp = new URL(raw, location.href).searchParams;
       var w = nativeOpen ? nativeOpen("", target || "_blank", features) : null;
       cardHtml(sp).then(function (html) {
@@ -1429,15 +1462,19 @@
     }
   }
 
-  if (document.readyState === "loading") {
-    document.addEventListener("DOMContentLoaded", dressPage, { once: true });
-  } else {
-    dressPage();
-  }
+  modeP.then(function (live) {
+    if (live) return;   // a real archive: no demo strip, no disabled pen
+    if (document.readyState === "loading") {
+      document.addEventListener("DOMContentLoaded", dressPage, { once: true });
+    } else {
+      dressPage();
+    }
+  });
   // #bubble-read only exists once the compose card has been built, and the
   // card is built lazily on the first tap. Watch until both are dressed,
   // then stop listening — this must not be a per-click cost forever.
   var watcher = function () {
+    if (LIVE !== false) return;   // live or undecided: leave the pen alone
     setTimeout(function () {
       dressPage();
       var read = document.getElementById("bubble-read");
