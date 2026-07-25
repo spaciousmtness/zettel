@@ -63,7 +63,10 @@ export class ZLayer {
     this.svg.addEventListener("pointerdown", (e) => {
       if (!this.writing) return;
       e.preventDefault(); e.stopPropagation();
-      this.svg.setPointerCapture(e.pointerId);
+      // an already-lifted pointer makes this THROW, which aborted the
+      // handler before the stroke was stored — handwriting vanished with no
+      // error. Most likely exactly where it matters: a finger on glass.
+      try { this.svg.setPointerCapture(e.pointerId); } catch { /* fine */ }
       this._live = { pts: [at(e)] };
       this.strokes.push(this._live);
     });

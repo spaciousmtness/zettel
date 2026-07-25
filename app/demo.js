@@ -74,8 +74,22 @@
         if (k && k.indexOf(NS) === 0) doomed.push(k);
       }
       doomed.forEach(function (k) { localStorage.removeItem(k); });
-      // the app's own first-visit flags, so a fresh judge gets the reveal
-      localStorage.removeItem("wl-revealed");
+      // the app's own per-visitor flags too, so the next judge gets the
+      // reveal AND the on-this-day card (wl-otd is a once-a-day gate) and
+      // inherits nobody's reading bookmark
+      ["wl-revealed", "wl-otd"].forEach(function (k) {
+        localStorage.removeItem(k);
+      });
+      var stale = [];
+      for (var j = 0; j < localStorage.length; j++) {
+        var key = localStorage.key(j);
+        // zlayer.js keeps the sheet's handwriting under zettel:ink:<key>
+        if (key && (key.indexOf("wl-bm-") === 0 ||
+                    key.indexOf("zettel:ink:") === 0)) {
+          stale.push(key);
+        }
+      }
+      stale.forEach(function (k) { localStorage.removeItem(k); });
     } catch (e) { /* nothing to clear */ }
   }
   demo.reset = resetNamespace;
@@ -97,9 +111,23 @@
   }
 
   var corpusPromises = {};
+  // Every spelling the app can hand us maps to one thread key: the
+  // identifier, the bare key, and the ALIAS. The alias matters — a link or a
+  // config that names the person rather than the handle would otherwise miss
+  // every thread-scoped route and the demo would quietly show an empty
+  // waveform and no Z-layer candidates.
   function keyOf(m, identifier) {
-    var map = (m.corpus && m.corpus.keyOf) || {};
-    return map[identifier] || identifier;
+    var c = m.corpus || {};
+    var map = c.keyOf || {};
+    if (map[identifier]) return map[identifier];
+    var alias = c.aliasOf || {};
+    if (alias[identifier]) return alias[identifier];
+    var lower = String(identifier || "").toLowerCase();
+    var keys = Object.keys(alias);
+    for (var i = 0; i < keys.length; i++) {
+      if (keys[i].toLowerCase() === lower) return alias[keys[i]];
+    }
+    return identifier;
   }
   function corpus(identifier) {
     return manifest().then(function (m) {
@@ -1209,8 +1237,18 @@
     if (OFF[route]) return Promise.resolve(json({ error: OFF[route] }, 501));
 
     return manifest().then(function (m) {
-      var key = canon(route, sp);
-      var file = (m.exact || {})[key] || nearest(m, route, sp);
+      // normalise `chat` to the spelling the snapshots were keyed under, so
+      // an alias or a bare key finds the same file the identifier does
+      var sp2 = sp;
+      if (identifier) {
+        var ident = ((m.corpus || {}).identOf || {})[keyOf(m, identifier)];
+        if (ident && ident !== identifier) {
+          sp2 = new URLSearchParams(sp.toString());
+          sp2.set("chat", ident);
+        }
+      }
+      var key = canon(route, sp2);
+      var file = (m.exact || {})[key] || nearest(m, route, sp2);
       if (!file) {
         var shape = (m.empty || {})[route];
         return miss(route, info.url.pathname + info.url.search, shape);
@@ -1295,6 +1333,13 @@
         "demo</footer></main></body></html>";
     });
   }
+  // the deterministic hook for the card, in the house style of
+  // window.__timeline / __waveform / __zlayer: a popup's document is not
+  // reachable from a test harness, so the HTML must be inspectable directly.
+  demo.card = function (query) {
+    return cardHtml(new URLSearchParams(String(query || "").replace(/^\?/, "")));
+  };
+
   function isCard(u) {
     try {
       return new URL(u, location.href).pathname.replace(/\/+$/, "")

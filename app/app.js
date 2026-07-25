@@ -7,6 +7,15 @@ import { MARK_DIALECT, TAPBACK_GLYPHS, markGlyph, armCrossing, armTwoTap,
 
 const $ = (id) => document.getElementById(id);
 
+// Where are we standing? On the desk this is a private loopback/LAN/Tailscale
+// host; on a judge's phone it is a public URL. Several strings are only true
+// in one of those places, so they ask.
+const ON_A_PRIVATE_HOST =
+  /^(localhost|127\.|\[::1\]|::1|10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.)/
+    .test(location.hostname)
+  || location.hostname.endsWith(".local")
+  || location.hostname.endsWith(".ts.net");
+
 const state = {
   chat: null,
   aliases: {},
@@ -44,7 +53,7 @@ function syncHandle(mode = "idle") {
     `${state.markers.length} mark${state.markers.length === 1 ? "" : "s"}`);
   bits.push(document.body.classList.contains("calm")
     ? "tap to open"
-    : "j/k move · n/p marks · g date · space play");
+    : "z lift the sheet · j/k move · n/p marks · g date · space play");
   meta.textContent = bits.join(" · ");
 }
 syncHandle();
@@ -185,9 +194,14 @@ function updateTrackMeta() {
   const count = Number(t.count || 0).toLocaleString();
 
   $("track-title").textContent = title;
+  // "private on this Mac" is TRUE on the desk and FALSE on a public URL, where
+  // it also reads as though the demo were running on localhost. Say where you
+  // actually are. ON_A_PRIVATE_HOST is computed at boot from the hostname.
   $("track-world").textContent = imported
     ? `${world} · read-only import`
-    : `${world} · private on this Mac`;
+    : ON_A_PRIVATE_HOST
+      ? `${world} · private on this Mac`
+      : `${world} · a synthetic archive · nothing leaves this page`;
   $("track-summary").textContent =
     `${count} message${t.count === 1 ? "" : "s"}` + (years ? ` · ${years}` : "");
   $("track-peer").textContent = monogram(title);
@@ -565,7 +579,7 @@ async function openThread(identifier, threads) {
     fetch(`/api/summons?chat=${q}`).then((r) => r.json())
       .catch(() => ({ summons: [] })),
     // the Z layer's proposals — structure only, no model has read them
-    fetch(`/api/candidates?chat=${q}`).then((r) => r.json())
+    fetch(`/api/candidates?chat=${q}&limit=28`).then((r) => r.json())
       .catch(() => ({ candidates: [] })),
     timeline.jumpToLatest(),
   ]);
@@ -3154,11 +3168,6 @@ document.addEventListener("keydown", (e) => {
   else if (k === "End") { stopPlaying(); timeline.jumpToLatest(); e.preventDefault(); }
 });
 
-// The failure differs by where you are standing. On a judge's phone at a
-// public URL, "check it's on the same private network" is simply wrong.
-const ON_A_PRIVATE_HOST = /^(localhost|127\.|\[::1\]|::1|10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.)/
-  .test(location.hostname) || location.hostname.endsWith(".local")
-  || location.hostname.endsWith(".ts.net");
 boot().catch(() => consentCard(ON_A_PRIVATE_HOST
   ? "The Mac didn't answer yet. Check that Zettel is open on the Mac and "
     + "this device is on the same private network, then try again."
