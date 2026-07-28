@@ -20,17 +20,28 @@ const GLYPH = {
   rupture: "—",   // an em dash: the silence itself
   reading: "◇",   // an open diamond: a model's reading, kept
   kept: "◆",      // filled: you accepted it into the record
+  // almost-equal: the same sentence, not the same moment. The one glyph
+  // that means two places at once, which is why it is the only one that
+  // draws a tie line between its ends.
+  resonance: "≈",
+  // a filled ring: sound, held. The one mark on the sheet the eye cannot
+  // read — tapping it is the only way in, which is honest, because that
+  // is also true of the voice it keeps.
+  voice: "◉",
 };
 
 export class ZLayer {
-  constructor(waveform, { onDescend, onSummon, onInk } = {}) {
+  constructor(waveform, { onDescend, onSummon, onInk, onVoice } = {}) {
     this.wave = waveform;
     this.onDescend = onDescend || (() => {});
     this.onSummon = onSummon || (() => {});
     this.onInk = onInk || (() => {});
+    this.onVoice = onVoice || (() => {});
     waveform.onRedraw = () => this.draw();   // repaint with the record
     this.candidates = [];
     this.readings = [];
+    this.resonances = [];
+    this.voices = [];
     this._lift = 0;
     this._armed = null;
     this._armTimer = null;
@@ -108,12 +119,58 @@ export class ZLayer {
     this.draw();
   }
 
-  /** Point the ink at a conversation and load whatever was written on it. */
-  useStore(chatKey) {
-    this._storeKey = `zettel:ink:${chatKey}`;
-    try {
-      this.strokes = JSON.parse(localStorage.getItem(this._storeKey) || "[]");
-    } catch { this.strokes = []; }
+  /** Resonances — the same question, asked again years later.
+   *
+   *  Its own stratum rather than a third kind of reading, because it is the
+   *  only entry on the sheet that is about TWO moments at once, and the
+   *  drawing has to say so: the pair is tied by a hairline across the plane.
+   *  Paired with the resonance.js note about where the reading happens —
+   *  the server never learned these two sentences were the same one. */
+  setResonances(list) {
+    this.resonances = Array.isArray(list) ? list : [];
+    this.draw();
+  }
+
+  /** Spoken marks — sound anchored to a moment, kept on the owner's own
+   *  machine. The sheet draws where; only a tap says what. */
+  setVoices(list) {
+    this.voices = Array.isArray(list) ? list : [];
+    this.draw();
+  }
+
+  /** Point the ink at a conversation and load whatever was written on it.
+   *
+   *  `key` must be the SERVER'S merge key for the thread, never the raw
+   *  identifier. One person is many chat rows — iMessage/SMS plus spelling
+   *  variants of the same number — and the server folds them into one
+   *  thread. Keyed by identifier, the same conversation reached by a
+   *  different spelling opened a blank sheet and the handwriting looked
+   *  lost. Marks (wl-seen-) and bookmarks (wl-bm-) already key by the merge
+   *  key; the sheet was the one thing that didn't.
+   *
+   *  `legacy` is the old identifier-keyed store. Ink written before this
+   *  fix is adopted into the merged key on first open and the dead key is
+   *  cleared — nobody's handwriting is stranded under a spelling. */
+  useStore(key, legacy) {
+    this._storeKey = `zettel:ink:${key}`;
+    const read = (name) => {
+      try { return JSON.parse(localStorage.getItem(name) || "[]"); }
+      catch { return []; }
+    };
+    this.strokes = read(this._storeKey);
+    const legacyKey = legacy && legacy !== key ? `zettel:ink:${legacy}` : null;
+    if (legacyKey) {
+      const stranded = read(legacyKey);
+      if (stranded.length) {
+        // the merged sheet wins on conflict; strokes are additive and a
+        // moment carries its own timestamp, so order does not matter
+        this.strokes = this.strokes.concat(stranded);
+        this.save();
+      }
+      if (stranded.length || localStorage.getItem(legacyKey) !== null) {
+        try { localStorage.removeItem(legacyKey); } catch { /* fine */ }
+      }
+    }
     this.draw();
   }
 
@@ -198,6 +255,49 @@ export class ZLayer {
     // outranks a stretch that merely looks interesting
     for (const c of this.cluster(this.candidates, w)) this.tab(c, w, h, true);
     for (const r of this.cluster(this.readings, w)) this.tab(r, w, h, false);
+    // ties are drawn UNDER the resonance tabs so a hairline never crosses a
+    // glyph, and above everything else so the pair reads as one object
+    this.ties(w, h);
+    for (const r of this.cluster(this.resonances, w)) this.tab(r, w, h, false);
+    for (const v of this.cluster(this.voices, w)) this.tab(v, w, h, false);
+  }
+
+  /** The line between two askings of the same sentence.
+   *
+   *  This is the only mark on the sheet that joins two moments, and it is
+   *  the reason resonance is a stratum rather than a kind: everything else
+   *  here is local to one stretch of time. Drawn only when BOTH ends are in
+   *  view — half a tie running off the edge reads as a stray rule, and the
+   *  tab's own label already says where the other end is. */
+  ties(w, h) {
+    const seen = new Set();
+    for (const r of this.resonances) {
+      const here = Number(r?.anchor?.from_ts);
+      const there = Number(r?.twin_ts);
+      if (!Number.isFinite(here) || !Number.isFinite(there)) continue;
+      const { t0, t1 } = this.wave;
+      if (here < t0 || here > t1 || there < t0 || there > t1) continue;
+      // each pair is held by both its ends; draw the tie once
+      const key = [Math.min(here, there), Math.max(here, there)].join(":");
+      if (seen.has(key)) continue;
+      seen.add(key);
+
+      const line = document.createElementNS(SVGNS, "line");
+      line.setAttribute("x1", this.wave.x(here).toFixed(1));
+      line.setAttribute("x2", this.wave.x(there).toFixed(1));
+      line.setAttribute("y1", 36);
+      line.setAttribute("y2", 36);
+      line.setAttribute("stroke", "var(--ink)");
+      line.setAttribute("stroke-width", "1");
+      // a long dash: kin to the candidate's pencil, but continuous enough to
+      // read as a span rather than a boundary. Solid at full contrast on
+      // e-ink, where a fine dash dithers into a smear.
+      if (!this._calm) line.setAttribute("stroke-dasharray", "6 4");
+      line.setAttribute("stroke-opacity", this._calm ? "1" : "0.7");
+      line.setAttribute("pointer-events", "none");
+      line.classList.add("z-tie");
+      this.svg.appendChild(line);
+    }
   }
 
   /** Geometry for one entry, or null if it can't be placed / is off-view. */
@@ -375,6 +475,7 @@ export class ZLayer {
       // a cluster is NEVER silently resolved to one of its members
       if (many) return this.focusRange(cluster.from, cluster.to);
       if (candidate) this.onSummon(item);
+      else if (item.kind === "voice") this.onVoice(item);
       else this.onDescend(item);
     };
     // Touch and pen preview, then commit — the house grammar, and the reason

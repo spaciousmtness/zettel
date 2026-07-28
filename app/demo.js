@@ -54,6 +54,34 @@
   var nativeFetch = window.fetch.bind(window);
   demo.nativeFetch = nativeFetch;
 
+  /* ---- live or demo? ----------------------------------------------------
+     One build, two grounds. On GitHub Pages there is no server, and every
+     /api/ call must be answered from snapshots. On a Mac running serve.py,
+     the SAME files must pass every call through untouched — that server is
+     reading the real archive, and a snapshot answering in its place would
+     silently show a stranger's invented life over your own.
+
+     The probe is one GET /api/health with the shim's own nativeFetch: a
+     real server answers 200 JSON, Pages answers 404, file:// throws. The
+     decision lands before the app's first fetch resolves, because health
+     IS the app's first fetch and it awaits us. */
+  var LIVE = null;   // null = undecided; sync call sites treat only false as demo
+  var modeP = nativeFetch("/api/health", { cache: "no-store" })
+    .then(function (r) { return r.ok; })
+    .catch(function () { return false; })
+    .then(function (ok) {
+      LIVE = ok;
+      demo.live = ok;
+      if (ok) {
+        // attachments come from the real server, not the snapshot map
+        window.__demoAtt = function (rowid, variant) {
+          return "/api/attachments/" + rowid + (variant || "");
+        };
+      }
+      return ok;
+    });
+  demo.liveP = modeP;
+
   /* ---- the keep-local store ------------------------------------------- */
 
   function lsGet(name, fallback) {
@@ -466,7 +494,7 @@
     if (fold(text).trim().split(" ").filter(Boolean).length <= 18) return text;
     var words = text.split(/\s+/);
     var flat = fold(text);
-    var pos = flat.indexOf(fold(needle).slice(1, -1));
+    var pos = flat.indexOf(fold(needle));   // token-bounded, as above
     if (pos < 0) return text.slice(0, 160);
     var before = flat.slice(0, pos).trim();
     var wordIdx = before ? before.split(" ").length : 0;
@@ -522,9 +550,17 @@
                                          PAGE_LIMIT_MAX));
         var before = parseCursor(sp.get("before"));
         var f = parsed.filters;
+        // fold() pads with a leading and trailing space ON PURPOSE — that
+        // is the trick that makes indexOf a whole-TOKEN test. Slicing the
+        // padding off turned every needle into a substring match, so `ink`
+        // matched "thinking", "drinking", "sinking" — 137 hits in the demo
+        // archive, none of them containing the word. fts5 MATCH does not do
+        // that, and this file's claim to be byte-identical to the server
+        // depended on it. `flat` is padded too, so a needle at the very
+        // start or end of a message still matches.
         var needles = parsed.needles.map(function (n) {
-          return fold(n).slice(1, -1);
-        }).filter(Boolean);
+          return fold(n);
+        }).filter(function (n) { return n.trim(); });
 
         var rows = [];
         for (var i = pool.rows.length - 1; i >= 0; i--) {
@@ -835,6 +871,8 @@
           var s = states[String(m.rowid)];
           return s ? Object.assign({}, m, { state: s }) : m;
         });
+        // the same ledger /api/markers serves, reignited rows included
+        growReignited(localMarks, states, c.messages);
         var rows;
         if (pinsOnly) {
           var emoji = typeof pinsOnly === "string" &&
@@ -1153,28 +1191,37 @@
         var markers = (data.markers || []).map(function (m) {
           return Object.assign({}, m, { state: states[String(m.rowid)] || "live" });
         });
-        // reignite re-pins a moment that never carried an emoji — the
-        // server grows the ledger for it, so this must too
-        var seen = {};
-        markers.forEach(function (m) { seen[m.rowid] = true; });
-        Object.keys(states).forEach(function (rid) {
-          if (states[rid] !== "resurfaced" || seen[rid]) return;
-          for (var i = 0; i < c.messages.length; i++) {
-            var m = c.messages[i];
-            if (String(m.rowid) !== rid) continue;
-            markers.push({
-              rowid: m.rowid, date_unix: m.date_unix,
-              preview: (m.text || "[no text]").replace(/\s+/g, " ")
-                .trim().slice(0, 120),
-              source: "reignite", from_me: !!m.from_me,
-              emoji: MARKS[0], state: "resurfaced",
-            });
-            break;
-          }
-        });
+        growReignited(markers, states, c.messages);
         markers.sort(function (a, b) { return a.date_unix - b.date_unix; });
         return { markers: markers };
       });
+  }
+
+  /* reignite re-pins a moment that never carried an emoji — the server grows
+     the ledger for it, so this must too.
+     ONE home for that rule. It used to live only inside mergeMarkers, so
+     /api/markers grew the synthesised row and /api/export?pins=1 did not:
+     "copy the minutes" silently dropped every reignited moment, and the two
+     routes reading the same keep-local store disagreed about what was in it. */
+  function growReignited(markers, states, messages) {
+    var seen = {};
+    markers.forEach(function (m) { seen[m.rowid] = true; });
+    Object.keys(states).forEach(function (rid) {
+      if (states[rid] !== "resurfaced" || seen[rid]) return;
+      for (var i = 0; i < messages.length; i++) {
+        var m = messages[i];
+        if (String(m.rowid) !== rid) continue;
+        markers.push({
+          rowid: m.rowid, date_unix: m.date_unix,
+          preview: (m.text || "[no text]").replace(/\s+/g, " ")
+            .trim().slice(0, 120),
+          source: "reignite", from_me: !!m.from_me,
+          emoji: MARKS[0], state: "resurfaced",
+        });
+        break;
+      }
+    });
+    return markers;
   }
 
   function mergeInks(data, identifier) {
@@ -1277,11 +1324,16 @@
     var mine = info.url.origin === location.origin &&
       (p.indexOf("/api/") === 0 || p.indexOf(BASE + "api/") === 0);
     if (!mine) return nativeFetch(input, init);
-    try {
-      return handle(info, input, init);
-    } catch (e) {
-      return Promise.resolve(miss(routeOf(p) || p, p, { error: String(e) }));
-    }
+    // live: every /api/ call passes through untouched, headers and all —
+    // installApiSecurity wrapped US, so its CSRF header rides along intact
+    return modeP.then(function (live) {
+      if (live) return nativeFetch(input, init);
+      try {
+        return handle(info, input, init);
+      } catch (e) {
+        return miss(routeOf(p) || p, p, { error: String(e) });
+      }
+    });
   };
 
   /* ==== the page itself ================================================ */
@@ -1354,7 +1406,7 @@
   }
   window.open = function (url, target, features) {
     var raw = String(url === undefined || url === null ? "" : url);
-    if (isCard(raw)) {
+    if (isCard(raw) && LIVE === false) {
       var sp = new URL(raw, location.href).searchParams;
       var w = nativeOpen ? nativeOpen("", target || "_blank", features) : null;
       cardHtml(sp).then(function (html) {
@@ -1365,7 +1417,14 @@
       });
       return w;
     }
-    if (raw.indexOf("/") === 0 && raw.indexOf("//") !== 0) {
+    // Every in-app call site already builds its path from WL.base, which IS
+    // this BASE — so prefixing again produced /zettel/app/zettel/app/guide.html
+    // and the guide 404'd. Invisible when BASE is "/", i.e. everywhere except
+    // the project sub-path deployment this shim exists to support. Made
+    // idempotent rather than removed, so an un-rewritten root-absolute path
+    // is still repaired.
+    if (raw.indexOf("/") === 0 && raw.indexOf("//") !== 0 &&
+        raw.indexOf(BASE) !== 0) {
       raw = BASE + raw.slice(1);
     }
     return nativeOpen ? nativeOpen(raw, target, features) : null;
@@ -1403,15 +1462,19 @@
     }
   }
 
-  if (document.readyState === "loading") {
-    document.addEventListener("DOMContentLoaded", dressPage, { once: true });
-  } else {
-    dressPage();
-  }
+  modeP.then(function (live) {
+    if (live) return;   // a real archive: no demo strip, no disabled pen
+    if (document.readyState === "loading") {
+      document.addEventListener("DOMContentLoaded", dressPage, { once: true });
+    } else {
+      dressPage();
+    }
+  });
   // #bubble-read only exists once the compose card has been built, and the
   // card is built lazily on the first tap. Watch until both are dressed,
   // then stop listening — this must not be a per-click cost forever.
   var watcher = function () {
+    if (LIVE !== false) return;   // live or undecided: leave the pen alone
     setTimeout(function () {
       dressPage();
       var read = document.getElementById("bubble-read");

@@ -45,9 +45,19 @@
 
   <main>
     <aside id="chronology" aria-label="conversation chronology">
-      <div id="chronology-track" role="slider" tabindex="0"
-           aria-label="conversation chronology" aria-orientation="vertical">
+      <!-- role="slider" is on its own element, NOT on the wrapper. The
+           slider role is Children Presentational, so every descendant's role
+           and accessible name are stripped from the accessibility tree —
+           which silently deleted the carefully composed aria-labels on the
+           landmark buttons ("3 annotations at Mar 4, 2019"). They stayed
+           tabbable, because tabindex is a focus concept and not an AX-tree
+           one, so a screen-reader user could reach them and hear nothing.
+           The marks are now a sibling of the slider rather than its child. -->
+      <div id="chronology-track">
         <canvas id="chronology-canvas" aria-hidden="true"></canvas>
+        <div id="chronology-slider" role="slider" tabindex="0"
+             aria-label="conversation chronology"
+             aria-orientation="vertical"></div>
         <div id="chronology-marks" aria-label="annotations on the chronology"></div>
         <div id="chronology-position" aria-hidden="true" hidden></div>
       </div>
@@ -137,6 +147,9 @@
           <strong id="track-title">Zettel</strong>
           <span class="mono" id="track-summary"></span>
         </div>
+        <button type="button" id="layer-down" class="mono"
+                aria-label="lower the timeline layer"
+                title="put the timeline away (esc)">▾</button>
         <div id="track-readout" aria-live="polite">
           <span id="track-date">most recent</span>
           <span class="mono" id="track-position">ready</span>
@@ -166,6 +179,8 @@
                 aria-label="write on the annotation layer by hand">✎ write</button>
         <button type="button" id="track-undo" class="mono" hidden
                 aria-label="undo the last stroke">undo</button>
+        <button type="button" id="track-voice" class="mono" hidden
+                aria-label="hold to speak onto the sheet">◉ hold to speak</button>
         <nav id="track-ranges" aria-label="timeline range">
           <span class="mono">window</span>
           <button type="button" data-range="90">90d</button>

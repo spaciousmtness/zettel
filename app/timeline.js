@@ -3,7 +3,7 @@
 // mechanism: fetch around/before/after, splice, compensate scrollTop.
 
 import { MARK_DIALECT, TAPBACK_GLYPHS, armCrossing,
-         armTwoTap } from "./shared.js";
+         armTwoTap, safeHttpUrl } from "./shared.js";
 
 const PAGE = 100;
 const CAP = 600;
@@ -57,11 +57,19 @@ export class Timeline {
     this.el.addEventListener("scroll", () => this.maybeExtend(), { passive: true });
     // idle poll: covers windows too short to scroll (no scrollbar → no
     // scroll events) and webviews that drop scroll-event delivery
-    setInterval(() => this.maybeExtend(), 400);
+    // Both idle timers stand down while the tab is hidden — a backgrounded
+    // reader has no viewport to extend and nobody to show an arrival to,
+    // and on a battery-powered paper screen the wake cost is the whole
+    // cost. Neither loses anything: the next visible tick catches up, and
+    // pollNewer is a tail check, not a subscription.
+    setInterval(() => { if (!document.hidden) this.maybeExtend(); }, 400);
     // A quiet tail check gives the archive a real arrival moment. It runs
     // only while this view is at the live end of an iMessage/SMS thread;
     // reading history is never interrupted or pulled toward the present.
-    setInterval(() => this.pollNewer(), 5000);
+    setInterval(() => { if (!document.hidden) this.pollNewer(); }, 5000);
+    document.addEventListener("visibilitychange", () => {
+      if (!document.hidden) this.maybeExtend();
+    });
 
     this.el.addEventListener("click", (ev) => {
       const rt = ev.target.closest(".reply-to");
@@ -188,6 +196,15 @@ export class Timeline {
     try {
       const data = await this.fetchPage({ [direction === "older" ? "before" : "after"]: cursor.join(",") });
       if (data === null) return;
+      // The end we fetched from may not be the end any more. trim() runs
+      // synchronously inside any OTHER splice, drops 200 rows off one end and
+      // rewrites that end's cursor — and pollNewer never consults
+      // fetching.older before doing it. Splicing this page on regardless
+      // prepends it to a head it does not adjoin, and the cursor overwrite
+      // below then marks the skipped range as loaded, so it can never be
+      // fetched again: a silent, permanent hole of several hundred messages.
+      const live = direction === "older" ? this.cursorOlder : this.cursorNewer;
+      if (!live || live[0] !== cursor[0] || live[1] !== cursor[1]) return;
       if (data.messages.length < PAGE) {
         if (direction === "older") this.doneOlder = true;
         else this.doneNewer = true;
@@ -208,8 +225,12 @@ export class Timeline {
     try {
       const fromBottom =
         this.el.scrollHeight - this.el.scrollTop - this.el.clientHeight;
-      const data = await this.fetchPage({ after: this.cursorNewer.join(",") });
+      const issued = this.cursorNewer;
+      const data = await this.fetchPage({ after: issued.join(",") });
       if (data === null || !data.messages.length) return;
+      // same guard as extend(): the tail may have been trimmed underneath us
+      if (!this.cursorNewer || this.cursorNewer[0] !== issued[0] ||
+          this.cursorNewer[1] !== issued[1]) return;
       const nodes = this.splice("newer", data);
       const incoming = [];
       data.messages.forEach((message, i) => {
@@ -499,7 +520,21 @@ export class Timeline {
           const d = await res.json();
           if (!res.ok) throw new Error(d.error);
           pinBtn.textContent = d.dry ? "would send ✓ (demo)" : "pinned ✓";
-          if (d.sent) setTimeout(() => this.jumpToLatest(), 2500);
+          if (d.sent) {
+            // Snapshot the place we acted in. This deferred jump captured
+            // nothing and read this.chat at FIRE time, so seconds after a
+            // pinback it yanked the reader to the live edge of whatever
+            // thread they had moved to. Every other line in this handler
+            // pins the row's identity for exactly that reason; the jump did
+            // not. Any navigation bumps epoch, so a reader who stayed put
+            // still gets it.
+            const myChat = this.chat, myEpoch = this.epoch;
+            setTimeout(() => {
+              if (this.chat === myChat && this.epoch === myEpoch) {
+                this.jumpToLatest();
+              }
+            }, 2500);
+          }
         } catch (err) {
           pinBtn.textContent = err.message.slice(0, 40);
           setTimeout(() => { pinBtn.textContent = "◆"; }, 4000);
@@ -548,7 +583,21 @@ export class Timeline {
           m.state = "resurfaced";
           row.classList.add("resurfaced");
           this.onMarksChange();  // re-light it on the waveform + ledger
-          if (d.sent) setTimeout(() => this.jumpToLatest(), 2600);
+          if (d.sent) {
+            // Snapshot the place we acted in. This deferred jump captured
+            // nothing and read this.chat at FIRE time, so seconds after a
+            // pinback it yanked the reader to the live edge of whatever
+            // thread they had moved to. Every other line in this handler
+            // pins the row's identity for exactly that reason; the jump did
+            // not. Any navigation bumps epoch, so a reader who stayed put
+            // still gets it.
+            const myChat = this.chat, myEpoch = this.epoch;
+            setTimeout(() => {
+              if (this.chat === myChat && this.epoch === myEpoch) {
+                this.jumpToLatest();
+              }
+            }, 2600);
+          }
         } catch (err) {
           reigBtn.textContent = err.message.slice(0, 40);
           setTimeout(() => { reigBtn.textContent = "↻"; }, 4000);
@@ -615,8 +664,19 @@ export class Timeline {
     let last = 0;
     for (const match of text.matchAll(URL_RE)) {
       el.append(text.slice(last, match.index));
+      // The same gate app.js's link panels use. URL_RE already blocks
+      // javascript: and data:, but `[^\s<>"']+` happily matches the userinfo
+      // form — and https://evil.example@real-bank.com reads to the eye as the
+      // bank. This is the surface where hostile text actually arrives, so it
+      // is the last place the rule should have been missing.
+      const safe = safeHttpUrl(match[0]);
+      if (!safe) {
+        el.append(match[0]);   // visible, inert — nothing vanishes silently
+        last = match.index + match[0].length;
+        continue;
+      }
       const a = document.createElement("a");
-      a.href = match[0];
+      a.href = safe.href;
       a.textContent = match[0];
       a.target = "_blank";
       a.rel = "noopener noreferrer";

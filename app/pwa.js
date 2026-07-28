@@ -55,8 +55,18 @@ if (!state.supported) {
 } else if (!state.secure) {
   state.reason = "insecure-context";
 } else {
-  /* the static demo ships no service worker: its navigation handler
-     answers every navigation from the cached index.html, which would
-     serve the app in place of guide.html on a real origin. */
-  state.reason = "demo-no-service-worker";
+  /* Two grounds, one file (see demo.js). The DEMO still ships no worker —
+     its navigation handler would serve the app in place of guide.html on
+     a public origin. The LIVE server is the app's own origin, so the
+     recovered original sw.js registers there and the shell opens without
+     a network. Nothing under /api/ is ever cached — that is the worker's
+     own first rule. */
+  const liveP = (window.__demo && window.__demo.liveP) || Promise.resolve(false);
+  liveP.then((live) => {
+    if (!live) { state.reason = "demo-no-service-worker"; return; }
+    navigator.serviceWorker.register("sw.js").then((reg) => {
+      state.registered = true;
+      state.scope = reg.scope;
+    }).catch((err) => { state.reason = String(err); });
+  });
 }

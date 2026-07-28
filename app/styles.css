@@ -31,8 +31,15 @@ button, select, input {
   border: 1.5px solid var(--ink); border-radius: 3px;
   min-height: 44px; padding: 0 var(--s2); cursor: pointer;
 }
+/* CONTROL EDGES vs SEPARATORS.
+   --hairline and --deckle are paper-ramp rules, meant for the line BETWEEN
+   things. Used as the boundary of an interactive control they measure
+   1.34-1.67:1 against their own ground, under a 3:1 floor — and because this
+   design system bans shadows outright, that border is the ONLY thing saying
+   "this is a control". --umber is 3.54:1 on bone and still reads as quiet.
+   Separators below keep the hairline; only the edges you can press moved. */
 select, input {
-  border: 1px solid var(--deckle); background: var(--bone);
+  border: 1px solid var(--umber); background: var(--bone);
 }
 button.quiet {
   border: none; background: none; color: var(--graphite);
@@ -43,7 +50,12 @@ button.quiet {
 button.quiet:hover { text-decoration-color: var(--umber); color: var(--ink); }
 button:focus-visible, select:focus-visible, input:focus-visible,
 [tabindex]:focus-visible {
-  outline: 2px solid var(--amber); outline-offset: 2px;
+  /* --sienna, not --amber. The 2px offset puts this ring on the PARENT's
+     paper, and amber measured 2.75:1 on vellum, 2.70:1 on plate and 2.89:1
+     on bone — all under the 3:1 floor for a focus indicator, in the palette
+     the app ships in. (Calm mode remaps amber and passed, which is why this
+     survived: it only failed in daylight.) sienna clears 4.6:1 everywhere. */
+  outline: 2px solid var(--sienna); outline-offset: 2px;
 }
 
 /* ---- ground: header / stream / handle ---- */
@@ -97,11 +109,15 @@ main { display: flex; flex: 1; min-height: 0; position: relative; }
   touch-action: none; user-select: none; cursor: ns-resize;
 }
 #chronology-track:focus-visible { outline-offset: -3px; }
-#chronology-canvas, #chronology-marks {
+#chronology-canvas, #chronology-marks, #chronology-slider {
   position: absolute; inset: 0; width: 100%; height: 100%;
 }
 #chronology-canvas { pointer-events: none; }
 #chronology-marks { pointer-events: none; }
+/* the slider is the focusable surface, but the TRACK still owns the pointer:
+   scrubbing handlers live there, so this must not intercept them */
+#chronology-slider { pointer-events: none; }
+#chronology-slider:focus-visible { outline-offset: -3px; }
 #chronology-position {
   position: absolute; left: 8px; width: 42px; height: 2px;
   transform: translateY(-1px); background: var(--ink);
@@ -264,8 +280,15 @@ main { display: flex; flex: 1; min-height: 0; position: relative; }
   color: var(--ink) !important; padding: 0 var(--s3);
   margin-left: auto;
 }
+/* Armed. The label was --amber on --bone: measured 2.89:1, on an 11px mono
+   string that needs 4.5:1 — so arming the send button made its label 5.7x
+   LESS legible than at rest (--ink on bone is 16.4:1), at the exact moment
+   it matters most. --sienna is 4.97:1 and reads as the same heat. The border
+   keeps amber, thickened to 2px so it carries the state by weight as well as
+   hue and survives grayscale. */
 #bubble-send[data-armed="1"] {
-  border-color: var(--amber) !important; color: var(--amber) !important;
+  border-color: var(--amber) !important; border-width: 2px !important;
+  color: var(--sienna) !important;
 }
 #bubble-note { flex: 1 1 100%; color: var(--slate); }
 
@@ -369,12 +392,21 @@ main { display: flex; flex: 1; min-height: 0; position: relative; }
   pointer-events: none;
 }
 /* e-ink ghosts: a pulse leaves a trail on the panel, so calm mode stops
-   ALL of them. Three were still breathing here (ember, pinback, resurfaced)
-   — form carries those states without motion. */
-body.calm .mark-halo, body.calm .msg.pinned::after,
+   ALL of them. The list said ALL and meant five of six — .mark-hot kept
+   breathing on the panel, and the prefers-reduced-motion list below (which
+   DOES include it) is the proof that this one drifted rather than being a
+   decision. Form carries every one of these states without motion. */
+body.calm .mark-halo, body.calm .mark-hot, body.calm .msg.pinned::after,
 body.calm .msg.ember::before, body.calm .msg.pinback::before,
 body.calm .msg.resurfaced::before {
   animation: none; opacity: .22;
+}
+/* .msg.arriving animates outline and background over 4.2s; .arrival-signal
+   translates by 8px. Both are real motion on a panel that ghosts, and both
+   were in the reduced-motion list and not this one — the same drift. The
+   outline and the glyph already carry "this just arrived" without moving. */
+body.calm .msg.arriving, body.calm .arrival-signal.showing {
+  animation: none;
 }
 @media (prefers-reduced-motion: reduce) {
   .mark-halo, .mark-hot, .msg.ember::before, .msg.pinned::after,
@@ -417,7 +449,13 @@ body.calm .msg.resurfaced::before {
   position: relative; cursor: pointer;
   border-bottom: 1px dashed var(--umber);
   background: none; border-top: none; border-left: none; border-right: none;
-  min-height: 0; padding: 0; border-radius: 0;
+  /* NO `min-height: 0` here — it used to sit on this line and silently
+     cancelled the 44px declared six lines above, leaving a ~26px target on a
+     button that navigates the stream. The comment up there says it measured
+     398x17 and needs a hand-sized target; it was right, and then this undid
+     it. If the taller box ever crowds the sender line, widen the ::after
+     expander rather than shrinking the button back. */
+  padding: 0; border-radius: 0;
   font-family: ui-monospace, Menlo, monospace; font-size: 11px;
   letter-spacing: .08em; color: var(--slate);
 }
@@ -720,7 +758,7 @@ body.calm .wrapped-flap {
               transform var(--settle) var(--press);
 }
 #z-svg .z-tab { pointer-events: auto; cursor: pointer; }
-#z-svg .z-tab:focus-visible { outline: 2px solid var(--amber); outline-offset: 1px; }
+#z-svg .z-tab:focus-visible { outline: 2px solid var(--sienna); outline-offset: 1px; }
 #wave-svg {
   /* recedes to a whisper under a raised sheet — never fully gone, because
      the reading is only meaningful against the record it reads */
@@ -828,7 +866,7 @@ body.calm #play-btn { width: 56px; height: 56px; padding: 15px; }
 #track-ranges { flex: 0 0 auto; }
 #track-ranges button {
   min-width: 44px; min-height: 44px; padding: 0 var(--s2);
-  border-color: var(--hairline); background: var(--bone); color: var(--graphite);
+  border-color: var(--umber); background: var(--bone); color: var(--graphite);
 }
 #track-ranges button[aria-pressed="true"] {
   color: var(--bone); background: var(--ink); border-color: var(--ink);
@@ -909,7 +947,12 @@ body.calm #play-btn { width: 56px; height: 56px; padding: 15px; }
 .ledger-new { color: var(--sienna); font-weight: bold; }
 .ledger-resurf-tag { color: var(--sienna); font-weight: bold; }
 .ledger-resurfaced { border-left: 2px solid var(--amber); padding-left: 32px; }
-.facet.has-new { color: var(--sienna); }
+/* Every other "new" state in this file pairs the hue with a form change —
+   .ledger-new and .ledger-resurf-tag go bold, .tapbacks .tb.pin goes bold,
+   .otd-marked takes a border. This one forgot, and under filter:grayscale(1)
+   sienna and graphite land 1.15:1 apart: no perceptible difference at all,
+   on the one control whose whole job is to say something changed. */
+.facet.has-new { color: var(--sienna); font-weight: bold; }
 
 /* the folder door (margins room): quiet, hairlined, never a box */
 .co-strip {
@@ -1082,7 +1125,7 @@ body.calm #chronology { flex-basis: 76px; }
 }
 .summon-question {
   font: inherit; color: var(--ink); background: var(--vellum);
-  border: 1px solid var(--hairline); border-radius: 3px;
+  border: 1px solid var(--umber); border-radius: 3px;
   padding: var(--s1) var(--s2); width: 100%; resize: vertical;
 }
 .summon-payload-head { color: var(--slate); margin: 0; }
@@ -1133,7 +1176,7 @@ body.calm #chronology { flex-basis: 76px; }
 .summon-action {
   min-height: 44px; display: flex; flex-direction: column; gap: 2px;
   text-align: left; padding: var(--s1) var(--s2);
-  border: 1px solid var(--hairline); border-radius: 3px;
+  border: 1px solid var(--umber); border-radius: 3px;
   background: var(--bone); width: 100%;
 }
 .summon-action-label { display: block; }
@@ -1147,7 +1190,7 @@ body.calm #chronology { flex-basis: 76px; }
 #worlds:empty { display: none; }
 .world-chip {
   min-height: 44px; padding: 0 var(--s2); font: inherit;
-  color: var(--slate); background: none; border: 1px solid var(--hairline);
+  color: var(--slate); background: none; border: 1px solid var(--umber);
   border-radius: 3px; letter-spacing: .04em;
 }
 .world-chip.current {
@@ -1242,3 +1285,89 @@ body.calm #chronology { flex-basis: 76px; }
   .resume-pill, .wl-toast { max-width: calc(100vw - 24px); text-align: center; }
   .track-note-editor { width: calc(100% - 16px); }
 }
+
+/* ---- the arrival ------------------------------------------------------------
+   A stranger's first ten seconds. Centred, because it is the only thing on
+   screen that matters yet, and it leaves on the first tap either way.
+
+   Depth is the house device — .lifted's misregistered edge — never a shadow
+   and never a scrim: the record stays legible underneath, which is the whole
+   argument the interface is making about layers. */
+.arrival {
+  position: fixed; inset: 0; z-index: var(--z-consent);
+  display: grid; place-items: center;
+  padding: var(--s3);
+  /* not a dimming scrim — a whisper of the paper, so the track behind stays
+     readable and the card reads as laid ON it rather than cut out of it */
+  background: color-mix(in srgb, var(--vellum) 72%, transparent);
+  pointer-events: auto;
+}
+.arrival-card {
+  margin: 0; max-width: 44ch; width: 100%;
+  padding: var(--s4);
+  background: var(--bone);
+  border: 1.5px solid var(--ink); border-radius: 4px;
+  position: relative;
+}
+/* the offset edge, by hand rather than via .lifted, because this card wants
+   the heavier 1.5px rule against the ink and .lifted's is a deckle hairline */
+.arrival-card::after {
+  content: ""; position: absolute; inset: -1px;
+  transform: translate(2px, 2px);
+  border: 1px solid var(--deckle); border-radius: inherit;
+  pointer-events: none; z-index: -1;
+}
+.arrival-head { color: var(--umber); margin: 0 0 var(--s2); }
+.arrival-said {
+  margin: 0 0 var(--s2); padding: 0 0 0 var(--s2);
+  border-left: 2px solid var(--amber);
+  font-size: 1.25rem; line-height: 1.4;
+}
+.arrival-line { color: var(--slate); margin: 0 0 var(--s2); }
+.arrival-gloss {
+  color: var(--graphite); font-size: .95rem; margin: 0 0 var(--s3);
+}
+.arrival-row { display: flex; gap: var(--s2); align-items: center; }
+.arrival-go {
+  padding: var(--s2) var(--s3);
+  color: var(--bone); background: var(--ink);
+  border: 1.5px solid var(--ink); border-radius: 4px;
+  font: inherit; cursor: pointer;
+}
+.arrival-go:hover { background: var(--sienna); border-color: var(--sienna); }
+.arrival-go:focus-visible {
+  /* --sienna, not --amber. The 2px offset puts this ring on the PARENT's
+     paper, and amber measured 2.75:1 on vellum, 2.70:1 on plate and 2.89:1
+     on bone — all under the 3:1 floor for a focus indicator, in the palette
+     the app ships in. (Calm mode remaps amber and passed, which is why this
+     survived: it only failed in daylight.) sienna clears 4.6:1 everywhere. */
+  outline: 2px solid var(--sienna); outline-offset: 2px;
+}
+
+/* e-ink: the plane arrives, it does not fade in. A cross-fade over a
+   full-width card is the worst case for ghosting on a reflective panel. */
+body.calm .arrival { background: var(--vellum); }
+body.calm .arrival-card::after { display: none; }
+
+@media (max-width: 480px) {
+  .arrival { place-items: end center; padding-bottom: var(--s4); }
+  .arrival-row { flex-wrap: wrap; }
+  .arrival-go { width: 100%; }
+}
+
+/* ---- the tie between two askings -------------------------------------------
+   Drawn on the Z plane by zlayer.ties(). Form carries it: a long dash is a
+   SPAN, where the candidate's fine dash is a boundary. Nothing here is
+   hue-bearing, so it survives grayscale like everything else on the sheet. */
+#z-svg .z-tie { pointer-events: none; }
+
+/* the deck's own put-away — a hand-sized ▾ on the head, because iOS and
+   the DC-1 have no Escape and the controls-row ▾ can sit below the fold */
+#layer-down { min-width: 44px; min-height: 44px; align-self: center;
+  border: 1px solid var(--umber); border-radius: 3px;
+  background: var(--bone); color: var(--ink); }
+
+/* hold-to-speak: while the hand is down, the ring fills and the border
+   carries the state by weight — form, never a pulse, so it is calm-safe */
+#track-voice[data-rec="1"] { color: var(--sienna);
+  border-color: var(--amber); border-width: 2px; font-weight: bold; }

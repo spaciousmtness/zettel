@@ -109,6 +109,52 @@ h1 em { font-style: italic; color: var(--sienna); }
   padding: 14px 30px; font-size: 19px; }
 .cta a.get:hover { background: var(--sienna); border-color: var(--sienna); }
 .cta .free { margin-top: 10px; }
+.cta .try { display: inline-block; margin-left: 14px; font-size: 16px; }
+
+/* ---- the door, and the ways through it ----
+   House rule, borrowed from the app: a control that cannot do its job is
+   ABSENT, not inert. The SSO row is drawn from the API's own /health
+   answer, so a provider that cannot complete a sign-in is never painted
+   and nobody ever taps a dead button. */
+.door { max-width: 30rem; margin: 26px auto 0; text-align: left;
+        border: 1.5px solid var(--ink); border-radius: 5px;
+        background: var(--bone); padding: 20px 22px; }
+.door h2 { text-align: center; margin-bottom: 14px; }
+.sso { display: grid; gap: 8px; }
+.sso button {
+  display: flex; align-items: center; justify-content: center; gap: 9px;
+  width: 100%; padding: 12px 16px; font: inherit; font-size: 16px;
+  border: 1.5px solid var(--ink); border-radius: 5px;
+  background: var(--bone); color: var(--ink); cursor: pointer; }
+.sso button:hover { background: var(--plate); }
+.sso button .g { font-family: ui-monospace, Menlo, monospace; font-size: 15px; }
+.or { display: flex; align-items: center; gap: 10px; margin: 16px 0 14px;
+      color: var(--umber); }
+.or::before, .or::after { content: ""; flex: 1; height: 1px;
+                          background: var(--hairline); }
+.field { display: block; margin: 0 0 12px; }
+.field span { display: block; margin-bottom: 5px; }
+.field input {
+  width: 100%; padding: 11px 12px; font: inherit; font-size: 16px;
+  color: var(--ink); background: var(--vellum);
+  border: 1.5px solid var(--deckle); border-radius: 4px; }
+.field input:focus { outline: 2px solid var(--sienna); outline-offset: 1px;
+                     border-color: var(--ink); }
+.field input[aria-invalid="true"] { border-color: var(--sienna); }
+.door button.join {
+  width: 100%; padding: 13px 16px; font: inherit; font-size: 17px;
+  border: 1.5px solid var(--ink); border-radius: 5px;
+  background: var(--ink); color: var(--vellum); cursor: pointer; }
+.door button.join:hover:not(:disabled) { background: var(--sienna);
+                                         border-color: var(--sienna); }
+.door button.join:disabled { opacity: .55; cursor: default; }
+.door .say { display: block; margin-top: 10px; min-height: 1.4em;
+             text-transform: none; letter-spacing: .04em; }
+.door .say[data-tone="bad"] { color: var(--sienna); }
+/* --graphite, not --umber: 13px prose needs 4.5:1 and umber on bone is
+   3.54:1. Reserve umber for genuinely inactive text. */
+.door .fine { margin-top: 12px; padding-top: 12px; font-size: 13px;
+              color: var(--graphite); border-top: 1px solid var(--hairline); }
 
 /* ---- sections ---- */
 section { padding: 44px 0; border-top: 1px solid var(--hairline); }
@@ -175,17 +221,82 @@ a { color: var(--sienna); }
     </div>
 
     <div class="cta">
-      <a class="get" href="./app/">Try the live demo →</a>
-      <p class="free mono">a synthetic archive of invented people · nothing sends ·
-        runs in your browser</p>
-      <p class="free mono"><a href="https://github.com/spaciousmtness/zettel"
-        style="color:inherit">source on GitHub</a> · macOS app reads your own
-        archive in place, read-only</p>
+      <a class="get" href="#door">Sign in →</a>
+      <a class="try" href="./app/">or try the demo — no signup →</a>
+      <p class="free mono">the demo is a synthetic archive of invented people ·
+        nothing sends · runs in your browser</p>
+    </div>
+
+    <div class="door" id="door">
+      <h2 id="door-head">sign in</h2>
+
+      <!-- Rendered only for providers the API reports as live. -->
+      <div class="sso" id="sso" hidden>
+        <button type="button" data-provider="google" hidden>
+          <span class="g" aria-hidden="true">G</span> Continue with Google
+        </button>
+        <button type="button" data-provider="apple" hidden>
+          <span class="g" aria-hidden="true"></span> Continue with Apple
+        </button>
+      </div>
+      <p class="or mono" id="or" hidden>or</p>
+
+      <form id="join" novalidate>
+        <label class="field">
+          <span class="mono">email</span>
+          <input type="email" id="join-email" name="email"
+                 autocomplete="email" inputmode="email"
+                 placeholder="you@example.com">
+        </label>
+        <button type="button" class="join" id="join-email-go">
+          Email me a link</button>
+
+        <p class="or mono">or</p>
+
+        <label class="field">
+          <span class="mono">phone — country code and all</span>
+          <input type="tel" id="join-phone" name="phone"
+                 autocomplete="tel" inputmode="tel"
+                 placeholder="+1 555 000 0000">
+        </label>
+        <label class="field" id="code-field" hidden>
+          <span class="mono">the six digits we just sent</span>
+          <input type="text" id="join-code" name="code" inputmode="numeric"
+                 autocomplete="one-time-code" maxlength="6"
+                 pattern="[0-9]{6}" placeholder="000000">
+        </label>
+        <button type="button" class="join" id="join-phone-go">
+          Text me a code</button>
+
+        <output class="say mono" id="join-say" role="status"
+                aria-live="polite"></output>
+      </form>
+
+      <p class="fine">Signing in creates an account for your <em>annotations</em>
+        — the marks, the ink, the chapters. It does not upload a single
+        message: Zettel reads your archive on your own machine, read-only, and
+        the sync carries sealed notes anchored to timestamps, never the
+        conversation they sit over.
+        <a href="https://github.com/spaciousmtness/zettel">Source on GitHub</a>.</p>
     </div>
   </header>
 
   <section class="feat">
     <h2>what it does</h2>
+
+    <h3>≈ The Z layer</h3>
+    <p>Press <span class="keys">z</span> and the record drops to a whisper
+    while a second sheet comes up over it, in exact register, carrying your
+    own marks. Lower it and there is nothing but the conversation again.
+    Annotation is usually something you do <em>to</em> a record; here it is a
+    separate plane that never touches it.</p>
+    <p>What makes it more than a nice gesture: a mark is stored as a
+    <em>moment</em> and a height — never a pixel, never a message id. Drag the
+    track from five years down to ninety days and your handwriting stretches
+    with the years, because it reads the same map the conversation does. An
+    annotation anchored to time rather than to a document is one that can
+    outlive the document.</p>
+
     <h3>📌 The pin becomes a ledger</h3>
     <p>Send 📌, 🔥, or ❓ in your messages like you already do — Zettel turns
     each into a glowing marker on your timeline and a row in a living
@@ -198,6 +309,14 @@ a { color: var(--sienna); }
     · from:them · after:2024-01-01 · has:link · in:all</span> — across one
     thread or every conversation you've ever had. Even words that were only
     <em>spoken</em>: voice memos transcribe on your own machine.</p>
+
+    <h3>≈ The question that came back</h3>
+    <p>Zettel proposes where to look using structure alone — a question mark,
+    then a fortnight of silence — without reading a word of what was said.
+    Then, in your browser and nowhere else, it checks whether two of those
+    silences were the same sentence. When someone asks you something in 2023
+    and asks it again in 2026, and neither time got an answer, the sheet ties
+    the two together with a line. Nothing searched for it.</p>
 
     <h3>〰️ A decade as one waveform</h3>
     <p>Your whole thread as a track — your voice above the line, theirs
@@ -226,6 +345,9 @@ a { color: var(--sienna); }
       without your two taps.</p>
       <p>Every exception is a loan, not an amendment: as capability comes
       home to your Mac, the crossings retire.</p>
+      <p style="margin-top:14px"><a href="./security.html">What we hold, and
+      what we can't →</a> — the boundary stated plainly, including the parts
+      that aren't true yet.</p>
     </div>
   </section>
 
@@ -234,10 +356,12 @@ a { color: var(--sienna); }
     <p style="color:var(--graphite);max-width:40rem">Zettel isn't in the
     App Store — it can't be; Apple sandboxes App Store apps away from your
     Messages archive, which is the whole point. So it's a small, open,
-    notarization-pending download. Four steps:</p>
+    notarization-pending download, and it goes out with
+    <a href="#door">early access</a> rather than sitting on a public link.
+    So you know what you're agreeing to, this is the whole of it:</p>
     <ol class="steps">
-      <li>Download and <strong>unzip</strong> <code>wavelength.zip</code>.</li>
-      <li><strong>Right-click</strong> <code>Wavelength.command</code> →
+      <li>Download and <strong>unzip</strong> <code>zettel.zip</code>.</li>
+      <li><strong>Right-click</strong> <code>Zettel.command</code> →
       <strong>Open</strong> → <strong>Open</strong>. (Right-click, not
       double-click — macOS blocks unsigned apps opened the normal way. This
       is the one awkward step until we notarize.)</li>
@@ -251,7 +375,9 @@ a { color: var(--sienna); }
   </section>
 
   <footer>
-    <p class="mono">Made by two people and their eleven-year thread.
+    <p class="mono"><a href="./security.html" style="color:inherit">security</a>
+    · <a href="https://github.com/spaciousmtness/zettel" style="color:inherit">source</a></p>
+    <p class="mono" style="margin-top:10px">Made by two people and their eleven-year thread.
     Not affiliated with Apple. Messages is a trademark of Apple Inc.
     Your data is yours; it never touches our machines because we don't
     have any.</p>
@@ -401,6 +527,216 @@ a { color: var(--sienna); }
     });
   }
   loop();
+})();
+</script>
+
+<script>
+/* ---- the door -------------------------------------------------------
+ *
+ * This page is a static file on GitHub Pages; the API is a Worker at its
+ * own origin (server/ in this repo). One constant joins them.
+ *
+ *   API — the Worker's origin. Empty means "no backend yet", and the door
+ *     says so plainly instead of swallowing an address into nowhere. Never
+ *     let someone believe they signed in when they did not.
+ *
+ * Which SSO providers appear is decided by the SERVER, not by this file:
+ * GET /health reports what is actually configured, and a provider that
+ * cannot complete is never drawn. That is the app's own law — absent, not
+ * inert — and here it is also the only honest option, since a provider
+ * button without a backend to verify its token is a button that lies.
+ */
+(function () {
+  "use strict";
+
+  var API = "";                 // e.g. "https://api.zettel.ink"
+
+  var form     = document.getElementById("join");
+  var email    = document.getElementById("join-email");
+  var phone    = document.getElementById("join-phone");
+  var code     = document.getElementById("join-code");
+  var codeWrap = document.getElementById("code-field");
+  var emailGo  = document.getElementById("join-email-go");
+  var phoneGo  = document.getElementById("join-phone-go");
+  var say      = document.getElementById("join-say");
+  var sso      = document.getElementById("sso");
+  var or       = document.getElementById("or");
+  if (!form) return;
+
+  function tell(text, tone) {
+    say.textContent = text;
+    if (tone) say.setAttribute("data-tone", tone); else say.removeAttribute("data-tone");
+  }
+
+  /* Deliberately permissive. A stricter pattern rejects real addresses
+     (+tags, new TLDs, unicode locals) and the only cost of a loose one is a
+     bounced invite. The server normalises properly either way. */
+  function emailOk(v) { return /^[^\s@]+@[^\s@.]+\.[^\s@]{2,}$/.test(v.trim()); }
+
+  /* Requires a country code, exactly as the server does — better to ask
+     here than to have the API refuse something the page implied was fine. */
+  function phoneOk(v) {
+    var t = v.trim().replace(/^00/, "+");
+    return /^\+[1-9][\d\s\-().]{7,20}$/.test(t);
+  }
+
+  function mark(el, ok) {
+    if (ok) el.removeAttribute("aria-invalid"); else el.setAttribute("aria-invalid", "true");
+    return ok;
+  }
+  email.addEventListener("input", function () {
+    if (email.getAttribute("aria-invalid")) mark(email, emailOk(email.value));
+  });
+  phone.addEventListener("input", function () {
+    if (phone.getAttribute("aria-invalid")) mark(phone, phoneOk(phone.value));
+  });
+
+  function busy(button, on, restingLabel) {
+    button.disabled = on;
+    if (on) { button.dataset.rest = button.textContent; button.textContent = "…"; }
+    else { button.textContent = restingLabel || button.dataset.rest || button.textContent; }
+  }
+
+  /* Credentials ride in an httpOnly cookie, so every call is same-site
+     credentialed. A hung request must never leave a button dead forever. */
+  function api(path, options) {
+    var controller = new AbortController();
+    var timer = setTimeout(function () { controller.abort(); }, 15000);
+    return fetch(API + path, Object.assign({
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      signal: controller.signal,
+    }, options || {})).then(function (r) {
+      clearTimeout(timer);
+      return r.json().catch(function () { return {}; }).then(function (body) {
+        return { ok: r.ok, status: r.status, body: body };
+      });
+    }, function (e) { clearTimeout(timer); throw e; });
+  }
+
+  function offline() {
+    tell("the door isn't open yet — nothing was sent, and nothing was stored", "bad");
+  }
+
+  function trouble(result) {
+    tell((result && result.body && result.body.error && result.body.error.message)
+      || "couldn't reach the door — try again in a moment", "bad");
+  }
+
+  /* Ask the server which ways in actually exist. A provider only appears
+     once the server has said it can complete the flow. */
+  if (API) {
+    api("/health").then(function (result) {
+      var live = (result.body && result.body.providers) || {};
+      var any = false;
+      [].slice.call(sso.querySelectorAll("button")).forEach(function (b) {
+        if (live[b.dataset.provider]) {
+          b.hidden = false;
+          any = true;
+          b.addEventListener("click", function () {
+            location.href = API + "/auth/" + b.dataset.provider + "/start";
+          });
+        } else {
+          b.remove();
+        }
+      });
+      if (any) { sso.hidden = false; or.hidden = false; }
+    }).catch(function () { /* no providers drawn; email and phone still work */ });
+  }
+
+  emailGo.addEventListener("click", function () {
+    if (!mark(email, emailOk(email.value))) {
+      tell("that address doesn't look complete", "bad"); email.focus(); return;
+    }
+    if (!API) return offline();
+    busy(emailGo, true);
+    api("/auth/email/start", {
+      method: "POST",
+      body: JSON.stringify({ email: email.value.trim() }),
+    }).then(function (result) {
+      busy(emailGo, false, "Email me a link");
+      if (!result.ok) return trouble(result);
+      /* The same words whether or not the address is known — the server
+         answers identically on purpose, and the copy has to match or the
+         page reintroduces the enumeration oracle the API just closed. */
+      tell("check your inbox — the link works once, for fifteen minutes");
+    }).catch(function () {
+      busy(emailGo, false, "Email me a link");
+      tell("couldn't reach the door — try again in a moment", "bad");
+    });
+  });
+
+  var awaitingCode = false;
+
+  phoneGo.addEventListener("click", function () {
+    if (!mark(phone, phoneOk(phone.value))) {
+      tell("that number needs a country code — like +1 555 000 0000", "bad");
+      phone.focus(); return;
+    }
+    if (!API) return offline();
+
+    if (!awaitingCode) {
+      busy(phoneGo, true);
+      api("/auth/phone/start", {
+        method: "POST",
+        body: JSON.stringify({ phone: phone.value.trim() }),
+      }).then(function (result) {
+        busy(phoneGo, false, "Verify and sign in");
+        if (!result.ok) return trouble(result);
+        awaitingCode = true;
+        codeWrap.hidden = false;
+        code.focus();
+        tell("we sent six digits — they expire in ten minutes");
+      }).catch(function () {
+        busy(phoneGo, false, "Text me a code");
+        tell("couldn't reach the door — try again in a moment", "bad");
+      });
+      return;
+    }
+
+    if (!/^\d{6}$/.test(code.value.trim())) {
+      mark(code, false); tell("six digits", "bad"); code.focus(); return;
+    }
+    mark(code, true);
+    busy(phoneGo, true);
+    api("/auth/phone/verify", {
+      method: "POST",
+      body: JSON.stringify({ phone: phone.value.trim(), code: code.value.trim() }),
+    }).then(function (result) {
+      if (result.ok) { location.href = "./app/"; return; }
+      busy(phoneGo, false, "Verify and sign in");
+      trouble(result);
+      /* A burned code cannot be retried — send them back to the start
+         rather than letting them type into a field that can never pass. */
+      if (result.status === 429) {
+        awaitingCode = false;
+        codeWrap.hidden = true;
+        code.value = "";
+        busy(phoneGo, false, "Text me a code");
+      }
+    }).catch(function () {
+      busy(phoneGo, false, "Verify and sign in");
+      tell("couldn't reach the door — try again in a moment", "bad");
+    });
+  });
+
+  code.addEventListener("keydown", function (e) {
+    if (e.key === "Enter") { e.preventDefault(); phoneGo.click(); }
+  });
+  email.addEventListener("keydown", function (e) {
+    if (e.key === "Enter") { e.preventDefault(); emailGo.click(); }
+  });
+  form.addEventListener("submit", function (e) { e.preventDefault(); });
+
+  /* A bounced sign-in comes back as ?signin=<why>. Say what happened
+     rather than dropping someone on the page with no explanation. */
+  var why = new URLSearchParams(location.search).get("signin");
+  if (why) {
+    tell(why === "expired" ? "that link had already been used — here's a fresh start"
+       : why === "state"   ? "that sign-in didn't finish safely — try once more"
+       : "that sign-in didn't complete — try once more", "bad");
+    document.getElementById("door").scrollIntoView({ block: "center" });
+  }
 })();
 </script>
 </body>

@@ -31,6 +31,29 @@ export function markGlyph(emoji) {
   return MARK_DIALECT[emoji]?.glyph || emoji;
 }
 
+/** The one gate every clickable destination passes through.
+ *
+ *  A URL in this app is never ours: it arrives inside a message somebody
+ *  else sent, or inside a server-built action. `a.href = url` on an
+ *  unchecked string makes `javascript:` and `data:` executable by tap —
+ *  the summons' action buttons already refused those inline, and the links
+ *  facet did not. One home for the rule so the two cannot drift.
+ *
+ *  Credentials are refused too: https://evil.example@real-bank.com reads to
+ *  the eye as the bank, and the links facet prints the raw string as the
+ *  label. A destination we cannot vouch for stays VISIBLE and inert —
+ *  never silently dropped, so nothing disappears out of the record.
+ *
+ *  Returns a URL object, or null. */
+export function safeHttpUrl(raw) {
+  try {
+    const parsed = new URL(raw);
+    if (!["http:", "https:"].includes(parsed.protocol)) return null;
+    if (parsed.username || parsed.password) return null;
+    return parsed;
+  } catch { return null; }
+}
+
 // tapback kind -> glyph. Text forms (e-ink legible, form-not-hue) —
 // these are timeline.js's original forms, now the one canonical set;
 // app.js's clipboard copy used to fork with its own emoji-only array.
