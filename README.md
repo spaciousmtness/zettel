@@ -29,6 +29,20 @@ The same files serve the public demo: `app/demo.js` probes `/api/health`
 once and passes everything through when a real server answers. No build,
 no flags, no second bundle.
 
+### Keeping it up
+
+`Zettel-Autostart.command` installs a launchd job so the reader starts at
+login and comes back if it ever dies — the link stops being something you
+have to remember to turn on. Double-click once; run it again any time to
+see status; `./Zettel-Autostart.command off` removes it.
+
+One honest catch: Full Disk Access is granted per *binary*, and a login job
+does not inherit Terminal's grant — the Python interpreter needs its own.
+The script resolves the exact path and prints it for you to paste. That is
+a broad permission (any script that interpreter runs can then read
+protected files); if you'd rather not give it, skip autostart and start the
+server by hand with `Zettel.command`, which Terminal's own grant covers.
+
 `serve.py` is a clean-room rebuild of the original hackathon server's read
 side, written from the API contract the demo shim documents. Sending,
 summons, handwriting OCR and the shared-folder co-layer still live only in
