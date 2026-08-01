@@ -11,6 +11,7 @@ import tempfile
 import time
 import unittest
 from pathlib import Path
+from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 import serve  # noqa: E402
@@ -132,6 +133,223 @@ class ServeTest(unittest.TestCase):
         self.assertEqual(serve.humanize(100000), "a day")
         self.assertEqual(serve.humanize(3 * 86400), "3 days")
         self.assertEqual(serve.humanize(400 * 86400), "1.1 years")
+
+
+class ConsentTest(unittest.TestCase):
+    """The screen most people will quit on. macOS never prompts for Full Disk
+    Access, and the grant attaches to a BINARY — so which instruction is
+    correct depends on how the server was started. Getting this wrong doesn't
+    just fail to help, it sends someone to grant a permission to an app that
+    isn't running the server."""
+
+    def test_from_a_shell_it_names_the_app(self):
+        with mock.patch.object(serve, "under_launchd", lambda: False):
+            b = serve.consent_brief("denied")
+        self.assertEqual(b["grant_kind"], "app")
+        self.assertEqual(b["grant"], "Terminal")
+        # the step everyone misses has to be said, not implied
+        self.assertTrue(any("Q" in s for s in b["restart"]))
+
+    def test_under_launchd_it_names_the_interpreter(self):
+        with mock.patch.object(serve, "under_launchd", lambda: True):
+            b = serve.consent_brief("denied")
+        self.assertEqual(b["grant_kind"], "path")
+        self.assertEqual(b["grant"], sys.executable)
+        # "turn it on for Terminal" is WRONG here — Terminal isn't running us
+        self.assertNotIn("Terminal", " ".join(b["restart"]))
+
+    def test_it_links_straight_at_the_pane(self):
+        # three levels into System Settings is where people give up
+        b = serve.consent_brief("denied")
+        self.assertIn("Privacy_AllFiles", b["settings_url"])
+
+    def test_the_error_survives_for_the_card_to_show(self):
+        self.assertEqual(serve.consent_brief("unable to open")["error"],
+                         "unable to open")
+
+
+class DoorwayTest(unittest.TestCase):
+    """Binding 127.0.0.1 keeps the network out. It does not keep out the
+    browser already running on this Mac — a page you visit can point its own
+    hostname at your loopback (DNS rebinding) and then read same-origin.
+    These go over a real socket with a forged Host, because that is the only
+    way to prove the header is actually consulted."""
+
+    @classmethod
+    def setUpClass(cls):
+        from http.server import ThreadingHTTPServer
+        import threading
+        cls.dbpath = fixture()
+        archive = serve.Archive(cls.dbpath)
+        serve.Handler.api = serve.Api(archive, serve.Store(tempfile.mkdtemp()), {})
+        cls.srv = ThreadingHTTPServer(("127.0.0.1", 0), serve.Handler)
+        cls.port = cls.srv.server_address[1]
+        cls.thread = threading.Thread(target=cls.srv.serve_forever, daemon=True)
+        cls.thread.start()
+        # the guard is built from serve.PORT at import; this server is on an
+        # ephemeral port, so allow it explicitly rather than weakening the set
+        cls.saved = serve.ALLOWED_HOSTS
+        serve.ALLOWED_HOSTS = frozenset(
+            list(cls.saved) + [f"localhost:{cls.port}", f"127.0.0.1:{cls.port}"])
+
+    @classmethod
+    def tearDownClass(cls):
+        serve.ALLOWED_HOSTS = cls.saved
+        cls.srv.shutdown()
+        cls.srv.server_close()
+
+    def raw(self, request):
+        """Speak HTTP by hand — http.client would rewrite Host for us."""
+        import socket
+        s = socket.create_connection(("127.0.0.1", self.port), timeout=5)
+        try:
+            s.sendall(request.encode())
+            chunks = []
+            while True:
+                b = s.recv(65536)
+                if not b:
+                    break
+                chunks.append(b)
+                if b"\r\n\r\n" in b"".join(chunks) and len(chunks) > 0:
+                    blob = b"".join(chunks)
+                    head, _, body = blob.partition(b"\r\n\r\n")
+                    length = 0
+                    for line in head.split(b"\r\n"):
+                        if line.lower().startswith(b"content-length:"):
+                            length = int(line.split(b":")[1])
+                    if len(body) >= length:
+                        return blob
+        finally:
+            s.close()
+        return b"".join(chunks)
+
+    def get(self, path, host, extra=""):
+        return self.raw(f"GET {path} HTTP/1.1\r\nHost: {host}\r\n"
+                        f"{extra}Connection: close\r\n\r\n")
+
+    def test_the_app_itself_is_let_through(self):
+        for host in (f"localhost:{self.port}", f"127.0.0.1:{self.port}"):
+            self.assertIn(b"200 OK", self.get("/api/health", host))
+
+    def test_a_rebound_hostname_cannot_read_the_archive(self):
+        # the whole attack in one line: same-origin to the browser, loopback
+        # on the wire. If this ever returns 200, every message is readable.
+        r = self.get("/api/messages?chat=%2B15550000137", f"evil.example:{self.port}")
+        self.assertIn(b"403", r)
+        self.assertNotIn(b"hidden in the stream", r)
+        self.assertNotIn(b"are you happy though", r)
+
+    def test_rebinding_cannot_reach_any_read_route(self):
+        for route in ("health", "chats", "messages", "search?q=happy",
+                      "export", "candidates", "onthisday", "wrapped"):
+            r = self.get(f"/api/{route}&chat=x" if "?" in route
+                         else f"/api/{route}?chat=x", "attacker.test")
+            self.assertIn(b"403", r, route)
+
+    def test_the_csrf_token_never_escapes(self):
+        # /api/health is where the write token lives. One readable response
+        # and the token defence is over, so health must refuse too.
+        r = self.get("/api/health", "attacker.test")
+        self.assertIn(b"403", r)
+        self.assertNotIn(serve.CSRF.encode(), r)
+
+    def test_static_files_are_behind_the_same_door(self):
+        self.assertIn(b"403", self.get("/", "attacker.test"))
+
+    def test_a_missing_host_is_not_the_app_asking(self):
+        # HTTP/1.1 requires Host and every browser sends it; absence is not
+        # something to be generous about.
+        self.assertIn(b"403", self.raw(
+            "GET /api/health HTTP/1.1\r\nConnection: close\r\n\r\n"))
+
+    def test_an_honest_cross_origin_post_is_refused_on_the_header(self):
+        # Not rebinding — a plain page POSTing to localhost. The CSRF token
+        # would catch it, but only while /api/health stays unreadable.
+        r = self.raw(
+            f"POST /api/tracknote HTTP/1.1\r\nHost: localhost:{self.port}\r\n"
+            "Origin: https://evil.example\r\nContent-Type: application/json\r\n"
+            "Content-Length: 2\r\nConnection: close\r\n\r\n{}")
+        self.assertIn(b"403", r)
+
+    def test_our_own_origin_still_writes(self):
+        body = json.dumps({"chat": "+15550000137", "ts": 1695365880,
+                           "text": "still here"})
+        r = self.raw(
+            f"POST /api/tracknote HTTP/1.1\r\nHost: localhost:{self.port}\r\n"
+            f"Origin: http://localhost:{self.port}\r\n"
+            f"X-Wavelength-CSRF: {serve.CSRF}\r\n"
+            "Content-Type: application/json\r\n"
+            f"Content-Length: {len(body.encode())}\r\n"
+            f"Connection: close\r\n\r\n{body}")
+        self.assertIn(b"200 OK", r)
+
+    def test_port_is_part_of_the_name(self):
+        # localhost:9999 is a DIFFERENT server; answering to it would mean
+        # any local port could be rebound onto ours.
+        self.assertIn(b"403", self.get("/api/health", "localhost:9999"))
+
+    def test_restart_refuses_when_nothing_would_bring_it_back(self):
+        """Absent, not inert: started from a shell there is no supervisor, so
+        the verb must say so rather than exit and strand you with no server."""
+        body = "{}"
+        r = self.raw(
+            f"POST /api/restart HTTP/1.1\r\nHost: localhost:{self.port}\r\n"
+            f"X-Wavelength-CSRF: {serve.CSRF}\r\n"
+            "Content-Type: application/json\r\n"
+            f"Content-Length: {len(body)}\r\nConnection: close\r\n\r\n{body}")
+        self.assertIn(b"501", r)
+        self.assertIn(b"Terminal", r)
+
+    def test_restart_is_not_an_unauthenticated_kill_switch(self):
+        body = "{}"
+        r = self.raw(
+            f"POST /api/restart HTTP/1.1\r\nHost: localhost:{self.port}\r\n"
+            "Content-Type: application/json\r\n"
+            f"Content-Length: {len(body)}\r\nConnection: close\r\n\r\n{body}")
+        self.assertIn(b"403", r)
+
+    def test_a_texted_html_file_cannot_run_inside_the_app(self):
+        """An attachment is a file a stranger chose. Under its own MIME type
+        it executes in our origin and can read the archive through the API."""
+        html = Path(tempfile.mkdtemp()) / "invoice.html"
+        html.write_text("<script>fetch('/api/messages?chat=x')</script>")
+        db = sqlite3.connect(self.dbpath)
+        db.execute("INSERT INTO attachment VALUES (9, ?, 'invoice.html',"
+                   " 'text/html', 40)", (str(html),))
+        db.commit()
+        db.close()
+        r = self.get("/api/attachments/9", f"localhost:{self.port}")
+        head = r.split(b"\r\n\r\n")[0].lower()
+        self.assertIn(b"200 ok", head)
+        self.assertNotIn(b"text/html", head)
+        self.assertIn(b"application/octet-stream", head)
+        self.assertIn(b"content-disposition: attachment", head)
+
+    def test_an_image_still_renders_in_place(self):
+        png = Path(tempfile.mkdtemp()) / "her.png"
+        png.write_bytes(b"\x89PNG\r\n\x1a\n" + b"\0" * 32)
+        db = sqlite3.connect(self.dbpath)
+        db.execute("INSERT INTO attachment VALUES (10, ?, 'her.png',"
+                   " 'image/png', 40)", (str(png),))
+        db.commit()
+        db.close()
+        head = self.get("/api/attachments/10",
+                        f"localhost:{self.port}").split(b"\r\n\r\n")[0].lower()
+        self.assertIn(b"image/png", head)
+        self.assertNotIn(b"content-disposition", head)
+
+    def test_a_sibling_folder_sharing_our_prefix_is_not_reachable(self):
+        """`str.startswith` would have let ../app-private through, because
+        that path really does begin with the app folder's name."""
+        sibling = serve.APP.resolve().parent / (serve.APP.resolve().name + "-private")
+        sibling.mkdir(exist_ok=True)
+        (sibling / "keys.txt").write_text("SHOULD-NEVER-BE-SERVED")
+        try:
+            r = self.get(f"/../{sibling.name}/keys.txt", f"localhost:{self.port}")
+            self.assertNotIn(b"SHOULD-NEVER-BE-SERVED", r)
+        finally:
+            (sibling / "keys.txt").unlink()
+            sibling.rmdir()
 
 
 if __name__ == "__main__":

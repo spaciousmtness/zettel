@@ -376,7 +376,7 @@ async function boot() {
   const health = await (await fetch("/api/health")).json();
   installApiSecurity(health.csrf_token);
   if (health.db !== "ok") {
-    consentCard(health.help);
+    consentCard(health.help, health.consent);
     return;
   }
   state.aliases = health.config.aliases || {};
@@ -893,22 +893,179 @@ async function refreshCo() {
   syncMapData();
 }
 
-function consentCard(text) {
+// The screen most people will quit on. macOS never asks for Full Disk
+// Access — you have to go find it — so this stands between a stranger and
+// everything the product does. It gets the same care as the sheet.
+//
+// `brief` comes from the server, which knows how it was started, so the card
+// can name the exact thing to grant instead of guessing. Without it (an old
+// server, or the demo) we fall back to printing the text.
+function consentCard(text, brief) {
   const el = $("timeline");
   el.textContent = "";
   const card = document.createElement("div");
   card.className = "card lifted";
-  for (const line of (text || "something went quietly wrong").split("\n")) {
-    const p = document.createElement("p");
-    if (/^\d\./.test(line)) p.className = "mono";
-    p.textContent = line;
-    card.append(p);
+
+  if (!brief) {
+    for (const line of (text || "something went quietly wrong").split("\n")) {
+      const p = document.createElement("p");
+      if (/^\d\./.test(line)) p.className = "mono";
+      p.textContent = line;
+      card.append(p);
+    }
+    const retry = document.createElement("button");
+    retry.textContent = "try again";
+    retry.addEventListener("click", () => location.reload());
+    card.append(retry);
+    el.append(card);
+    return;
   }
-  const retry = document.createElement("button");
-  retry.textContent = "try again";
-  retry.addEventListener("click", () => location.reload());
-  card.append(retry);
+
+  const lede = document.createElement("p");
+  lede.textContent = "Your Mac is holding the door on your own messages.";
+  card.append(lede);
+
+  const why = document.createElement("p");
+  why.className = "aside";
+  why.textContent =
+    "Zettel can't open the archive until you say so. macOS won't ask on its " +
+    "own — the permission has to be given by hand, once.";
+  card.append(why);
+
+  // Step one: get them to the right pane. Three levels into System Settings
+  // is where people give up, so link straight at it.
+  const steps = document.createElement("ol");
+  steps.className = "consent-steps";
+
+  const step1 = document.createElement("li");
+  step1.append(document.createTextNode("Open Full Disk Access."));
+  const open = document.createElement("a");
+  open.href = brief.settings_url;
+  open.className = "button";
+  open.textContent = "Open it for me";
+  step1.append(document.createElement("br"), open);
+  steps.append(step1);
+
+  // Step two: name the exact thing. A path can't be retyped from memory, so
+  // it gets a copy button rather than a line to squint at.
+  const step2 = document.createElement("li");
+  if (brief.grant_kind === "path") {
+    step2.append(document.createTextNode(
+      "Press + , then ⇧⌘G, and paste this:"));
+    const path = document.createElement("code");
+    path.className = "mono consent-path";
+    path.textContent = brief.grant;
+    const copy = document.createElement("button");
+    copy.textContent = "copy";
+    copy.addEventListener("click", async () => {
+      try {
+        await navigator.clipboard.writeText(brief.grant);
+        copy.textContent = "copied ✓";
+      } catch {
+        // clipboard refused (no gesture, no permission) — select it so ⌘C works
+        const r = document.createRange();
+        r.selectNodeContents(path);
+        getSelection().removeAllRanges();
+        getSelection().addRange(r);
+        copy.textContent = "press ⌘C";
+      }
+    });
+    step2.append(document.createElement("br"), path, copy);
+    const aside = document.createElement("p");
+    aside.className = "aside";
+    aside.textContent =
+      "That's the Python that runs Zettel. The grant is real: anything that " +
+      "interpreter runs can then read protected files.";
+    step2.append(aside);
+  } else {
+    step2.append(document.createTextNode("Turn it on for "));
+    const b = document.createElement("strong");
+    b.textContent = brief.grant;
+    step2.append(b, document.createTextNode(
+      " — whichever app you started Zettel from."));
+  }
+  steps.append(step2);
+
+  for (const line of brief.restart || []) {
+    const li = document.createElement("li");
+    li.textContent = line;
+    steps.append(li);
+  }
+  card.append(steps);
+
+  const status = document.createElement("p");
+  status.className = "aside";
+  card.append(status);
+
+  const row = document.createElement("div");
+  row.className = "row";
+  const done = document.createElement("button");
+  done.textContent = "I've turned it on";
+  row.append(done);
+  card.append(row);
+
+  const err = document.createElement("p");
+  err.className = "mono aside";
+  err.textContent = brief.error || "";
+  card.append(err);
+
+  const calm = document.createElement("p");
+  calm.className = "aside";
+  calm.textContent = brief.reassurance || "";
+  card.append(calm);
+
   el.append(card);
+
+  // Waiting, then coming back on its own, is the whole point: the moment
+  // where someone has done the work and is staring at a page that still
+  // says no is exactly where they close the tab.
+  let polling = false;
+  async function waitForIt(triedRestart) {
+    if (polling) return;
+    polling = true;
+    done.disabled = true;
+    const deadline = Date.now() + 90000;
+    while (Date.now() < deadline) {
+      await new Promise(r => setTimeout(r, 1200));
+      try {
+        const r = await fetch("/api/health", { cache: "no-store" });
+        const h = await r.json();
+        if (h.db === "ok") {
+          status.textContent = "Open. Bringing your archive up…";
+          return location.reload();
+        }
+      } catch {
+        // the server going briefly unreachable IS the restart working
+        status.textContent = "Restarting Zettel…";
+        continue;
+      }
+      status.textContent = triedRestart
+        ? "Waiting for macOS to hand it over…"
+        : "Not yet — macOS is still refusing. Leave this open; it'll notice.";
+    }
+    status.textContent = "Still refused. Worth checking the path above is " +
+      "exactly the one listed, then reload this page.";
+    done.disabled = false;
+    polling = false;
+  }
+
+  done.addEventListener("click", async () => {
+    status.textContent = "Checking…";
+    let restarted = false;
+    if (brief.launched_by === "launchd") {
+      // A permission granted after launch doesn't reach a running process —
+      // macOS already decided about this one. Ending non-zero lets launchd
+      // start it again with the new answer.
+      try {
+        const r = await fetch("/api/restart", {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: "{}",
+        });
+        restarted = r.ok && !!(await r.json()).restarting;
+      } catch { /* it may die mid-reply; the poll below settles it */ }
+    }
+    waitForIt(restarted);
+  });
 }
 
 // ---- suffix adoption: a previous location of this archive left ink behind -----
