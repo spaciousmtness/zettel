@@ -904,6 +904,17 @@ ALLOWED_HOSTS = frozenset(
     for p in (f":{PORT}", "")
 )
 
+# Types the browser may render in our own origin. Images, audio and video
+# cannot carry script; anything else — html, svg, pdf — either can or has
+# historically found a way, so it leaves as a download instead.
+INLINE_SAFE = frozenset((
+    "image/png", "image/jpeg", "image/gif", "image/webp", "image/heic",
+    "image/heif", "image/bmp", "image/tiff",
+    "audio/mpeg", "audio/mp4", "audio/aac", "audio/wav", "audio/x-wav",
+    "audio/x-m4a", "audio/amr", "audio/ogg",
+    "video/mp4", "video/quicktime", "video/3gpp", "video/webm",
+))
+
 REBIND_HELP = ("this server answers to localhost only. A request arrived "
                "addressed to another name, which is how a web page tries to "
                "read your archive through your own browser — refused")
@@ -938,10 +949,13 @@ class Handler(BaseHTTPRequestHandler):
 
     # -- plumbing ------------------------------------------------------------
 
-    def _send(self, code, body, ctype="application/json; charset=utf-8"):
+    def _send(self, code, body, ctype="application/json; charset=utf-8",
+              extra=None):
         raw = body if isinstance(body, bytes) else json.dumps(body).encode()
         self.send_response(code)
         self.send_header("Content-Type", ctype)
+        for k, v in (extra or {}).items():
+            self.send_header(k, v)
         self.send_header("Content-Length", str(len(raw)))
         self.send_header("Cache-Control", "no-store")
         # same hardening the Worker sends; localhost is not an excuse
@@ -1148,7 +1162,17 @@ class Handler(BaseHTTPRequestHandler):
         except Exception as e:
             return self._send(500, {"error": "this Mac couldn't convert it",
                                     "detail": str(e)[:200]})
-        return self._send(200, path.read_bytes(), ctype=mime)
+        # An attachment is a file a stranger chose and sent you. Served under
+        # its own MIME type it runs in OUR origin — one texted .html and the
+        # attacker's script is inside the app, reading the whole archive
+        # through the API. So: render only what is safe to render, and hand
+        # everything else back as a download.
+        extra = {}
+        if mime.split(";")[0].strip() not in INLINE_SAFE:
+            mime = "application/octet-stream"
+            name = (row[0]["transfer_name"] or path.name).replace('"', "")
+            extra["Content-Disposition"] = f'attachment; filename="{name}"'
+        return self._send(200, path.read_bytes(), ctype=mime, extra=extra)
 
     def _transcode(self, src, rowid, ext, cmd):
         CACHE_DIR.mkdir(parents=True, exist_ok=True)
@@ -1212,7 +1236,10 @@ footer{{margin-top:20px;padding-top:10px;border-top:1px solid #d8d1c1}}
         if rel.endswith("/"):
             rel += "index.html"
         target = (APP / rel).resolve()
-        if not str(target).startswith(str(APP.resolve())) or not target.is_file():
+        # is_relative_to, not startswith: a string prefix also matches a
+        # SIBLING whose name merely begins the same way, so ../app-private
+        # would have walked straight out of the app folder.
+        if not target.is_relative_to(APP.resolve()) or not target.is_file():
             # unknown paths fall back to the app shell (deep links like /?chat=)
             target = APP / "index.html"
         mime = mimetypes.guess_type(target.name)[0] or "application/octet-stream"

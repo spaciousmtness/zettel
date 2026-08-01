@@ -145,7 +145,8 @@ class DoorwayTest(unittest.TestCase):
     def setUpClass(cls):
         from http.server import ThreadingHTTPServer
         import threading
-        archive = serve.Archive(fixture())
+        cls.dbpath = fixture()
+        archive = serve.Archive(cls.dbpath)
         serve.Handler.api = serve.Api(archive, serve.Store(tempfile.mkdtemp()), {})
         cls.srv = ThreadingHTTPServer(("127.0.0.1", 0), serve.Handler)
         cls.port = cls.srv.server_address[1]
@@ -252,6 +253,49 @@ class DoorwayTest(unittest.TestCase):
         # localhost:9999 is a DIFFERENT server; answering to it would mean
         # any local port could be rebound onto ours.
         self.assertIn(b"403", self.get("/api/health", "localhost:9999"))
+
+    def test_a_texted_html_file_cannot_run_inside_the_app(self):
+        """An attachment is a file a stranger chose. Under its own MIME type
+        it executes in our origin and can read the archive through the API."""
+        html = Path(tempfile.mkdtemp()) / "invoice.html"
+        html.write_text("<script>fetch('/api/messages?chat=x')</script>")
+        db = sqlite3.connect(self.dbpath)
+        db.execute("INSERT INTO attachment VALUES (9, ?, 'invoice.html',"
+                   " 'text/html', 40)", (str(html),))
+        db.commit()
+        db.close()
+        r = self.get("/api/attachments/9", f"localhost:{self.port}")
+        head = r.split(b"\r\n\r\n")[0].lower()
+        self.assertIn(b"200 ok", head)
+        self.assertNotIn(b"text/html", head)
+        self.assertIn(b"application/octet-stream", head)
+        self.assertIn(b"content-disposition: attachment", head)
+
+    def test_an_image_still_renders_in_place(self):
+        png = Path(tempfile.mkdtemp()) / "her.png"
+        png.write_bytes(b"\x89PNG\r\n\x1a\n" + b"\0" * 32)
+        db = sqlite3.connect(self.dbpath)
+        db.execute("INSERT INTO attachment VALUES (10, ?, 'her.png',"
+                   " 'image/png', 40)", (str(png),))
+        db.commit()
+        db.close()
+        head = self.get("/api/attachments/10",
+                        f"localhost:{self.port}").split(b"\r\n\r\n")[0].lower()
+        self.assertIn(b"image/png", head)
+        self.assertNotIn(b"content-disposition", head)
+
+    def test_a_sibling_folder_sharing_our_prefix_is_not_reachable(self):
+        """`str.startswith` would have let ../app-private through, because
+        that path really does begin with the app folder's name."""
+        sibling = serve.APP.resolve().parent / (serve.APP.resolve().name + "-private")
+        sibling.mkdir(exist_ok=True)
+        (sibling / "keys.txt").write_text("SHOULD-NEVER-BE-SERVED")
+        try:
+            r = self.get(f"/../{sibling.name}/keys.txt", f"localhost:{self.port}")
+            self.assertNotIn(b"SHOULD-NEVER-BE-SERVED", r)
+        finally:
+            (sibling / "keys.txt").unlink()
+            sibling.rmdir()
 
 
 if __name__ == "__main__":
