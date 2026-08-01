@@ -888,12 +888,53 @@ READ_ONLY_501 = ("this rebuild reads your archive and keeps your marks — "
 
 # ---- HTTP -------------------------------------------------------------------
 
+# The names this server will answer to. Binding 127.0.0.1 keeps the network
+# out, but it does NOT keep out the browser you are already running: any page
+# you visit can open a socket to your own loopback. Normally the same-origin
+# policy makes that harmless — we send no CORS headers, so evil.com may send
+# the request but may not read the reply. DNS rebinding walks around that
+# entirely: the attacker publishes evil.com with a one-second TTL, you load
+# the page, the record flips to 127.0.0.1, and their script fetches
+# http://evil.com:8477/api/messages. To the browser that is SAME-origin, so
+# no CORS check ever runs — and the socket lands here. Checking Host is the
+# defence, because the one thing the attacker cannot forge is which name the
+# browser thinks it is talking to.
+ALLOWED_HOSTS = frozenset(
+    f"{h}{p}" for h in ("localhost", "127.0.0.1", "[::1]")
+    for p in (f":{PORT}", "")
+)
+
+REBIND_HELP = ("this server answers to localhost only. A request arrived "
+               "addressed to another name, which is how a web page tries to "
+               "read your archive through your own browser — refused")
+
+
 class Handler(BaseHTTPRequestHandler):
     api: Api = None
     protocol_version = "HTTP/1.1"
 
     def log_message(self, fmt, *args):
         pass                                     # quiet; errors still raise
+
+    # -- the doorway ---------------------------------------------------------
+
+    def _addressed_here(self):
+        """True when the browser believes it is talking to localhost.
+
+        Absent Host is refused too: HTTP/1.1 requires it, every browser sends
+        it, so a request without one is not the app asking.
+        """
+        host = (self.headers.get("Host") or "").strip().lower()
+        if host not in ALLOWED_HOSTS:
+            return False
+        # Belt to that brace: a plain cross-origin POST (no rebinding) still
+        # reaches us with an honest Origin. The CSRF token already refuses it,
+        # but the token is handed out by /api/health, so it is only ever one
+        # readable response away from useless. Refuse on the header instead.
+        origin = (self.headers.get("Origin") or "").strip().lower()
+        if origin and origin not in {f"http://{h}" for h in ALLOWED_HOSTS}:
+            return False
+        return True
 
     # -- plumbing ------------------------------------------------------------
 
@@ -924,6 +965,8 @@ class Handler(BaseHTTPRequestHandler):
     # -- GET -----------------------------------------------------------------
 
     def do_GET(self):
+        if not self._addressed_here():
+            return self._send(403, {"error": REBIND_HELP})
         u = urlparse(self.path)
         sp = parse_qs(u.query)
         path = unquote(u.path)
@@ -977,6 +1020,8 @@ class Handler(BaseHTTPRequestHandler):
     # -- POST: sidecar writes, honest 501s for the Mac-only verbs ------------
 
     def do_POST(self):
+        if not self._addressed_here():
+            return self._send(403, {"error": REBIND_HELP})
         u = urlparse(self.path)
         path = unquote(u.path)
         if not path.startswith("/api/"):

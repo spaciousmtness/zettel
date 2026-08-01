@@ -134,5 +134,125 @@ class ServeTest(unittest.TestCase):
         self.assertEqual(serve.humanize(400 * 86400), "1.1 years")
 
 
+class DoorwayTest(unittest.TestCase):
+    """Binding 127.0.0.1 keeps the network out. It does not keep out the
+    browser already running on this Mac — a page you visit can point its own
+    hostname at your loopback (DNS rebinding) and then read same-origin.
+    These go over a real socket with a forged Host, because that is the only
+    way to prove the header is actually consulted."""
+
+    @classmethod
+    def setUpClass(cls):
+        from http.server import ThreadingHTTPServer
+        import threading
+        archive = serve.Archive(fixture())
+        serve.Handler.api = serve.Api(archive, serve.Store(tempfile.mkdtemp()), {})
+        cls.srv = ThreadingHTTPServer(("127.0.0.1", 0), serve.Handler)
+        cls.port = cls.srv.server_address[1]
+        cls.thread = threading.Thread(target=cls.srv.serve_forever, daemon=True)
+        cls.thread.start()
+        # the guard is built from serve.PORT at import; this server is on an
+        # ephemeral port, so allow it explicitly rather than weakening the set
+        cls.saved = serve.ALLOWED_HOSTS
+        serve.ALLOWED_HOSTS = frozenset(
+            list(cls.saved) + [f"localhost:{cls.port}", f"127.0.0.1:{cls.port}"])
+
+    @classmethod
+    def tearDownClass(cls):
+        serve.ALLOWED_HOSTS = cls.saved
+        cls.srv.shutdown()
+        cls.srv.server_close()
+
+    def raw(self, request):
+        """Speak HTTP by hand — http.client would rewrite Host for us."""
+        import socket
+        s = socket.create_connection(("127.0.0.1", self.port), timeout=5)
+        try:
+            s.sendall(request.encode())
+            chunks = []
+            while True:
+                b = s.recv(65536)
+                if not b:
+                    break
+                chunks.append(b)
+                if b"\r\n\r\n" in b"".join(chunks) and len(chunks) > 0:
+                    blob = b"".join(chunks)
+                    head, _, body = blob.partition(b"\r\n\r\n")
+                    length = 0
+                    for line in head.split(b"\r\n"):
+                        if line.lower().startswith(b"content-length:"):
+                            length = int(line.split(b":")[1])
+                    if len(body) >= length:
+                        return blob
+        finally:
+            s.close()
+        return b"".join(chunks)
+
+    def get(self, path, host, extra=""):
+        return self.raw(f"GET {path} HTTP/1.1\r\nHost: {host}\r\n"
+                        f"{extra}Connection: close\r\n\r\n")
+
+    def test_the_app_itself_is_let_through(self):
+        for host in (f"localhost:{self.port}", f"127.0.0.1:{self.port}"):
+            self.assertIn(b"200 OK", self.get("/api/health", host))
+
+    def test_a_rebound_hostname_cannot_read_the_archive(self):
+        # the whole attack in one line: same-origin to the browser, loopback
+        # on the wire. If this ever returns 200, every message is readable.
+        r = self.get("/api/messages?chat=%2B15550000137", f"evil.example:{self.port}")
+        self.assertIn(b"403", r)
+        self.assertNotIn(b"hidden in the stream", r)
+        self.assertNotIn(b"are you happy though", r)
+
+    def test_rebinding_cannot_reach_any_read_route(self):
+        for route in ("health", "chats", "messages", "search?q=happy",
+                      "export", "candidates", "onthisday", "wrapped"):
+            r = self.get(f"/api/{route}&chat=x" if "?" in route
+                         else f"/api/{route}?chat=x", "attacker.test")
+            self.assertIn(b"403", r, route)
+
+    def test_the_csrf_token_never_escapes(self):
+        # /api/health is where the write token lives. One readable response
+        # and the token defence is over, so health must refuse too.
+        r = self.get("/api/health", "attacker.test")
+        self.assertIn(b"403", r)
+        self.assertNotIn(serve.CSRF.encode(), r)
+
+    def test_static_files_are_behind_the_same_door(self):
+        self.assertIn(b"403", self.get("/", "attacker.test"))
+
+    def test_a_missing_host_is_not_the_app_asking(self):
+        # HTTP/1.1 requires Host and every browser sends it; absence is not
+        # something to be generous about.
+        self.assertIn(b"403", self.raw(
+            "GET /api/health HTTP/1.1\r\nConnection: close\r\n\r\n"))
+
+    def test_an_honest_cross_origin_post_is_refused_on_the_header(self):
+        # Not rebinding — a plain page POSTing to localhost. The CSRF token
+        # would catch it, but only while /api/health stays unreadable.
+        r = self.raw(
+            f"POST /api/tracknote HTTP/1.1\r\nHost: localhost:{self.port}\r\n"
+            "Origin: https://evil.example\r\nContent-Type: application/json\r\n"
+            "Content-Length: 2\r\nConnection: close\r\n\r\n{}")
+        self.assertIn(b"403", r)
+
+    def test_our_own_origin_still_writes(self):
+        body = json.dumps({"chat": "+15550000137", "ts": 1695365880,
+                           "text": "still here"})
+        r = self.raw(
+            f"POST /api/tracknote HTTP/1.1\r\nHost: localhost:{self.port}\r\n"
+            f"Origin: http://localhost:{self.port}\r\n"
+            f"X-Wavelength-CSRF: {serve.CSRF}\r\n"
+            "Content-Type: application/json\r\n"
+            f"Content-Length: {len(body.encode())}\r\n"
+            f"Connection: close\r\n\r\n{body}")
+        self.assertIn(b"200 OK", r)
+
+    def test_port_is_part_of_the_name(self):
+        # localhost:9999 is a DIFFERENT server; answering to it would mean
+        # any local port could be rebound onto ours.
+        self.assertIn(b"403", self.get("/api/health", "localhost:9999"))
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=1)
