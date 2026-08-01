@@ -203,7 +203,15 @@ class Store:
     def __init__(self, directory):
         self.path = Path(directory) / "store.json"
         self.lock = threading.Lock()
-        self.path.parent.mkdir(parents=True, exist_ok=True)
+        # 0700, and chmod after the fact because mkdir's mode is ignored on a
+        # directory that already exists — and is masked by umask even when it
+        # isn't. Marks and voice notes are as private as the archive they
+        # describe; they should not be world-readable because of a default.
+        self.path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+        try:
+            self.path.parent.chmod(0o700)
+        except OSError:
+            pass
         try:
             self.data = json.loads(self.path.read_text())
         except Exception:
