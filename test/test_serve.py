@@ -11,6 +11,7 @@ import tempfile
 import time
 import unittest
 from pathlib import Path
+from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 import serve  # noqa: E402
@@ -134,6 +135,39 @@ class ServeTest(unittest.TestCase):
         self.assertEqual(serve.humanize(400 * 86400), "1.1 years")
 
 
+class ConsentTest(unittest.TestCase):
+    """The screen most people will quit on. macOS never prompts for Full Disk
+    Access, and the grant attaches to a BINARY — so which instruction is
+    correct depends on how the server was started. Getting this wrong doesn't
+    just fail to help, it sends someone to grant a permission to an app that
+    isn't running the server."""
+
+    def test_from_a_shell_it_names_the_app(self):
+        with mock.patch.object(serve, "under_launchd", lambda: False):
+            b = serve.consent_brief("denied")
+        self.assertEqual(b["grant_kind"], "app")
+        self.assertEqual(b["grant"], "Terminal")
+        # the step everyone misses has to be said, not implied
+        self.assertTrue(any("Q" in s for s in b["restart"]))
+
+    def test_under_launchd_it_names_the_interpreter(self):
+        with mock.patch.object(serve, "under_launchd", lambda: True):
+            b = serve.consent_brief("denied")
+        self.assertEqual(b["grant_kind"], "path")
+        self.assertEqual(b["grant"], sys.executable)
+        # "turn it on for Terminal" is WRONG here — Terminal isn't running us
+        self.assertNotIn("Terminal", " ".join(b["restart"]))
+
+    def test_it_links_straight_at_the_pane(self):
+        # three levels into System Settings is where people give up
+        b = serve.consent_brief("denied")
+        self.assertIn("Privacy_AllFiles", b["settings_url"])
+
+    def test_the_error_survives_for_the_card_to_show(self):
+        self.assertEqual(serve.consent_brief("unable to open")["error"],
+                         "unable to open")
+
+
 class DoorwayTest(unittest.TestCase):
     """Binding 127.0.0.1 keeps the network out. It does not keep out the
     browser already running on this Mac — a page you visit can point its own
@@ -253,6 +287,26 @@ class DoorwayTest(unittest.TestCase):
         # localhost:9999 is a DIFFERENT server; answering to it would mean
         # any local port could be rebound onto ours.
         self.assertIn(b"403", self.get("/api/health", "localhost:9999"))
+
+    def test_restart_refuses_when_nothing_would_bring_it_back(self):
+        """Absent, not inert: started from a shell there is no supervisor, so
+        the verb must say so rather than exit and strand you with no server."""
+        body = "{}"
+        r = self.raw(
+            f"POST /api/restart HTTP/1.1\r\nHost: localhost:{self.port}\r\n"
+            f"X-Wavelength-CSRF: {serve.CSRF}\r\n"
+            "Content-Type: application/json\r\n"
+            f"Content-Length: {len(body)}\r\nConnection: close\r\n\r\n{body}")
+        self.assertIn(b"501", r)
+        self.assertIn(b"Terminal", r)
+
+    def test_restart_is_not_an_unauthenticated_kill_switch(self):
+        body = "{}"
+        r = self.raw(
+            f"POST /api/restart HTTP/1.1\r\nHost: localhost:{self.port}\r\n"
+            "Content-Type: application/json\r\n"
+            f"Content-Length: {len(body)}\r\nConnection: close\r\n\r\n{body}")
+        self.assertIn(b"403", r)
 
     def test_a_texted_html_file_cannot_run_inside_the_app(self):
         """An attachment is a file a stranger chose. Under its own MIME type

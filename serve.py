@@ -410,7 +410,11 @@ class Api:
         try:
             n = self.a.q("SELECT COUNT(*) AS n FROM message")[0]["n"]
         except sqlite3.Error as e:
-            return {"db": "error", "help": FDA_HELP.format(err=e)}
+            # the token travels even on the error path: the consent card's
+            # restart verb is a POST, and Host-checking already means only
+            # our own origin can read this
+            return {"db": "error", "help": FDA_HELP.format(err=e),
+                    "csrf_token": CSRF, "consent": consent_brief(e)}
         return {
             "db": "ok", "messages": n, "csrf_token": CSRF,
             "summon_available": False, "orphaned_families": [],
@@ -890,6 +894,53 @@ This is almost always macOS protecting your Messages — grant access and try ag
 3. Quit Terminal fully (Cmd+Q) and reopen it, then run Zettel again
 Nothing is sent anywhere: this permission is between you and your own Mac."""
 
+# The screen most people will quit on. macOS never prompts for Full Disk
+# Access — you have to go find it — so this is six manual steps standing
+# between a stranger and the first thing the product does. Generic
+# instructions make it worse, because the permission is granted to a BINARY
+# and which binary depends on how the server was started. Under launchd,
+# "turn it on for Terminal" is not merely unhelpful, it is wrong: Terminal
+# isn't running this, and a grant to it changes nothing.
+
+
+def under_launchd():
+    """A launchd job is reparented to pid 1; a shell keeps its parent."""
+    try:
+        return os.getppid() == 1
+    except OSError:
+        return False
+
+
+def consent_brief(err):
+    """Everything the card needs to name the exact thing to grant."""
+    launchd = under_launchd()
+    binary = sys.executable or "/usr/bin/python3"
+    if launchd:
+        grant, how = binary, "path"
+        restart = ["Zettel restarts itself once you close Settings — "
+                   "this page will notice and come back on its own."]
+    else:
+        grant, how = "Terminal", "app"
+        restart = ["Quit Terminal completely — ⌘Q, not just the window. "
+                   "This is the step people miss, and without it macOS "
+                   "keeps refusing.",
+                   "Open Terminal again and start Zettel."]
+    return {
+        "error": str(err),
+        "launched_by": "launchd" if launchd else "terminal",
+        "grant": grant,
+        "grant_kind": how,
+        "binary": binary,
+        # deep link: opens the Full Disk Access pane directly, rather than
+        # asking someone to hunt three levels into System Settings
+        "settings_url": ("x-apple.systempreferences:com.apple.preference"
+                         ".security?Privacy_AllFiles"),
+        "restart": restart,
+        "reassurance": ("This permission is between you and your own Mac. "
+                        "The server binds 127.0.0.1, opens the archive "
+                        "read-only, and sends nothing anywhere."),
+    }
+
 READ_ONLY_501 = ("this rebuild reads your archive and keeps your marks — "
                  "sending, summons and handwriting still live in the original "
                  "Wavelength server on your Mac")
@@ -1061,6 +1112,21 @@ class Handler(BaseHTTPRequestHandler):
 
         if self.headers.get("X-Wavelength-CSRF") != CSRF:
             return self._send(403, {"error": "stale page — reload and try again"})
+
+        # Granting Full Disk Access does not reach a process already running —
+        # macOS decided about this one at launch. Under launchd we can simply
+        # end, non-zero, and be started again by KeepAlive with the new
+        # decision. That turns "quit Terminal completely, then start Zettel
+        # again" into nothing at all. Started from a shell there is no one to
+        # restart us, so the verb is absent rather than a button that strands
+        # you with no server (house law: absent, not inert).
+        if route == "restart":
+            if not under_launchd():
+                return self._send(501, {"error": "no supervisor to bring this "
+                                        "back — quit Terminal fully (⌘Q) and "
+                                        "start Zettel again"})
+            threading.Timer(0.25, lambda: os._exit(1)).start()
+            return self._send(200, {"ok": True, "restarting": True})
         body = self._json_body()
         if body is None:
             return self._send(400, {"error": "malformed body"})
@@ -1277,7 +1343,9 @@ def main():
 
     class BootErrorApi(Api):
         def health(self, sp):
-            return {"db": "error", "help": FDA_HELP.format(err="no access yet")}
+            return {"db": "error", "help": FDA_HELP.format(err="no access yet"),
+                    "csrf_token": CSRF,
+                    "consent": consent_brief("no access yet")}
 
     if archive:
         Handler.api = Api(archive, Store(STORE_DIR), config)
