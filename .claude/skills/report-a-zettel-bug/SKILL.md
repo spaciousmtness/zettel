@@ -15,6 +15,9 @@ running it on their own archive, which is exactly the thing nobody else can
 look at. The founder's archive does not reproduce a tester's bug. So the
 reporting path has to be easy, and safe by construction rather than by care.
 
+Building this for another project? `PLUMBING.md` beside this file explains
+the pieces, why each exists, and the build order.
+
 ## The one rule: the reporter approves the post
 
 Never file silently. Draft it, show it, post only on an explicit yes. A
