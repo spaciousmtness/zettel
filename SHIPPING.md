@@ -28,7 +28,7 @@ to row 2. Row 3 isn't a shipping question yet, it's a product one.
 - [x] **Attachment XSS.** A texted `.html` ran inside the app's origin and
       could read everything through the API. Closed 2026-08-01.
 - [x] **Static path traversal** to a sibling folder. Closed 2026-08-01.
-- [x] **LICENSE: Apache-2.0.** Closed 2026-09-24 (`LICENSE` at the root). Was: there wasn't one. A public repo with no license is "all
+- [x] **LICENSE: evaluation only, for now.** 2026-09-24: Apache-2.0 was added and pulled back the same day in favor of Wavelength's all-rights-reserved evaluation license, so testers can run it while the final choice waits on consumer vs enterprise and on confirming who owns the code. Was: there wasn't one. A public repo with no license is "all
       rights reserved": strictly, nobody may legally run or copy it. This is
       a founder decision, not a formality, because it's hard to reverse:
       - **Apache-2.0** — permissive like MIT but with an explicit patent

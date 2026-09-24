@@ -213,7 +213,7 @@ number** has crept into the demo bundle this README promises is synthetic.
 
 ## License
 
-Apache-2.0. See [`LICENSE`](LICENSE).
+All rights reserved. Shared for evaluation and personal use only; see [`LICENSE`](LICENSE).
 
 ---
 
