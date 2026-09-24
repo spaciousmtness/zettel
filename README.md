@@ -211,6 +211,10 @@ whole sign-in and sync flow runs with no network and no Cloudflare account.
 CI additionally checks that every module parses and that **no non-555 phone
 number** has crept into the demo bundle this README promises is synthetic.
 
+## License
+
+Apache-2.0. See [`LICENSE`](LICENSE).
+
 ---
 
 *Made at a Night Hack with [Claude Code](https://claude.com/claude-code).
