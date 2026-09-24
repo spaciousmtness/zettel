@@ -203,7 +203,15 @@ class Store:
     def __init__(self, directory):
         self.path = Path(directory) / "store.json"
         self.lock = threading.Lock()
-        self.path.parent.mkdir(parents=True, exist_ok=True)
+        # 0700, and chmod after the fact because mkdir's mode is ignored on a
+        # directory that already exists — and is masked by umask even when it
+        # isn't. Marks and voice notes are as private as the archive they
+        # describe; they should not be world-readable because of a default.
+        self.path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+        try:
+            self.path.parent.chmod(0o700)
+        except OSError:
+            pass
         try:
             self.data = json.loads(self.path.read_text())
         except Exception:
@@ -402,7 +410,11 @@ class Api:
         try:
             n = self.a.q("SELECT COUNT(*) AS n FROM message")[0]["n"]
         except sqlite3.Error as e:
-            return {"db": "error", "help": FDA_HELP.format(err=e)}
+            # the token travels even on the error path: the consent card's
+            # restart verb is a POST, and Host-checking already means only
+            # our own origin can read this
+            return {"db": "error", "help": FDA_HELP.format(err=e),
+                    "csrf_token": CSRF, "consent": consent_brief(e)}
         return {
             "db": "ok", "messages": n, "csrf_token": CSRF,
             "summon_available": False, "orphaned_families": [],
@@ -882,11 +894,90 @@ This is almost always macOS protecting your Messages — grant access and try ag
 3. Quit Terminal fully (Cmd+Q) and reopen it, then run Zettel again
 Nothing is sent anywhere: this permission is between you and your own Mac."""
 
+# The screen most people will quit on. macOS never prompts for Full Disk
+# Access — you have to go find it — so this is six manual steps standing
+# between a stranger and the first thing the product does. Generic
+# instructions make it worse, because the permission is granted to a BINARY
+# and which binary depends on how the server was started. Under launchd,
+# "turn it on for Terminal" is not merely unhelpful, it is wrong: Terminal
+# isn't running this, and a grant to it changes nothing.
+
+
+def under_launchd():
+    """A launchd job is reparented to pid 1; a shell keeps its parent."""
+    try:
+        return os.getppid() == 1
+    except OSError:
+        return False
+
+
+def consent_brief(err):
+    """Everything the card needs to name the exact thing to grant."""
+    launchd = under_launchd()
+    binary = sys.executable or "/usr/bin/python3"
+    if launchd:
+        grant, how = binary, "path"
+        restart = ["Zettel restarts itself once you close Settings — "
+                   "this page will notice and come back on its own."]
+    else:
+        grant, how = "Terminal", "app"
+        restart = ["Quit Terminal completely — ⌘Q, not just the window. "
+                   "This is the step people miss, and without it macOS "
+                   "keeps refusing.",
+                   "Open Terminal again and start Zettel."]
+    return {
+        "error": str(err),
+        "launched_by": "launchd" if launchd else "terminal",
+        "grant": grant,
+        "grant_kind": how,
+        "binary": binary,
+        # deep link: opens the Full Disk Access pane directly, rather than
+        # asking someone to hunt three levels into System Settings
+        "settings_url": ("x-apple.systempreferences:com.apple.preference"
+                         ".security?Privacy_AllFiles"),
+        "restart": restart,
+        "reassurance": ("This permission is between you and your own Mac. "
+                        "The server binds 127.0.0.1, opens the archive "
+                        "read-only, and sends nothing anywhere."),
+    }
+
 READ_ONLY_501 = ("this rebuild reads your archive and keeps your marks — "
                  "sending, summons and handwriting still live in the original "
                  "Wavelength server on your Mac")
 
 # ---- HTTP -------------------------------------------------------------------
+
+# The names this server will answer to. Binding 127.0.0.1 keeps the network
+# out, but it does NOT keep out the browser you are already running: any page
+# you visit can open a socket to your own loopback. Normally the same-origin
+# policy makes that harmless — we send no CORS headers, so evil.com may send
+# the request but may not read the reply. DNS rebinding walks around that
+# entirely: the attacker publishes evil.com with a one-second TTL, you load
+# the page, the record flips to 127.0.0.1, and their script fetches
+# http://evil.com:8477/api/messages. To the browser that is SAME-origin, so
+# no CORS check ever runs — and the socket lands here. Checking Host is the
+# defence, because the one thing the attacker cannot forge is which name the
+# browser thinks it is talking to.
+ALLOWED_HOSTS = frozenset(
+    f"{h}{p}" for h in ("localhost", "127.0.0.1", "[::1]")
+    for p in (f":{PORT}", "")
+)
+
+# Types the browser may render in our own origin. Images, audio and video
+# cannot carry script; anything else — html, svg, pdf — either can or has
+# historically found a way, so it leaves as a download instead.
+INLINE_SAFE = frozenset((
+    "image/png", "image/jpeg", "image/gif", "image/webp", "image/heic",
+    "image/heif", "image/bmp", "image/tiff",
+    "audio/mpeg", "audio/mp4", "audio/aac", "audio/wav", "audio/x-wav",
+    "audio/x-m4a", "audio/amr", "audio/ogg",
+    "video/mp4", "video/quicktime", "video/3gpp", "video/webm",
+))
+
+REBIND_HELP = ("this server answers to localhost only. A request arrived "
+               "addressed to another name, which is how a web page tries to "
+               "read your archive through your own browser — refused")
+
 
 class Handler(BaseHTTPRequestHandler):
     api: Api = None
@@ -895,12 +986,35 @@ class Handler(BaseHTTPRequestHandler):
     def log_message(self, fmt, *args):
         pass                                     # quiet; errors still raise
 
+    # -- the doorway ---------------------------------------------------------
+
+    def _addressed_here(self):
+        """True when the browser believes it is talking to localhost.
+
+        Absent Host is refused too: HTTP/1.1 requires it, every browser sends
+        it, so a request without one is not the app asking.
+        """
+        host = (self.headers.get("Host") or "").strip().lower()
+        if host not in ALLOWED_HOSTS:
+            return False
+        # Belt to that brace: a plain cross-origin POST (no rebinding) still
+        # reaches us with an honest Origin. The CSRF token already refuses it,
+        # but the token is handed out by /api/health, so it is only ever one
+        # readable response away from useless. Refuse on the header instead.
+        origin = (self.headers.get("Origin") or "").strip().lower()
+        if origin and origin not in {f"http://{h}" for h in ALLOWED_HOSTS}:
+            return False
+        return True
+
     # -- plumbing ------------------------------------------------------------
 
-    def _send(self, code, body, ctype="application/json; charset=utf-8"):
+    def _send(self, code, body, ctype="application/json; charset=utf-8",
+              extra=None):
         raw = body if isinstance(body, bytes) else json.dumps(body).encode()
         self.send_response(code)
         self.send_header("Content-Type", ctype)
+        for k, v in (extra or {}).items():
+            self.send_header(k, v)
         self.send_header("Content-Length", str(len(raw)))
         self.send_header("Cache-Control", "no-store")
         # same hardening the Worker sends; localhost is not an excuse
@@ -924,6 +1038,8 @@ class Handler(BaseHTTPRequestHandler):
     # -- GET -----------------------------------------------------------------
 
     def do_GET(self):
+        if not self._addressed_here():
+            return self._send(403, {"error": REBIND_HELP})
         u = urlparse(self.path)
         sp = parse_qs(u.query)
         path = unquote(u.path)
@@ -977,6 +1093,8 @@ class Handler(BaseHTTPRequestHandler):
     # -- POST: sidecar writes, honest 501s for the Mac-only verbs ------------
 
     def do_POST(self):
+        if not self._addressed_here():
+            return self._send(403, {"error": REBIND_HELP})
         u = urlparse(self.path)
         path = unquote(u.path)
         if not path.startswith("/api/"):
@@ -994,6 +1112,21 @@ class Handler(BaseHTTPRequestHandler):
 
         if self.headers.get("X-Wavelength-CSRF") != CSRF:
             return self._send(403, {"error": "stale page — reload and try again"})
+
+        # Granting Full Disk Access does not reach a process already running —
+        # macOS decided about this one at launch. Under launchd we can simply
+        # end, non-zero, and be started again by KeepAlive with the new
+        # decision. That turns "quit Terminal completely, then start Zettel
+        # again" into nothing at all. Started from a shell there is no one to
+        # restart us, so the verb is absent rather than a button that strands
+        # you with no server (house law: absent, not inert).
+        if route == "restart":
+            if not under_launchd():
+                return self._send(501, {"error": "no supervisor to bring this "
+                                        "back — quit Terminal fully (⌘Q) and "
+                                        "start Zettel again"})
+            threading.Timer(0.25, lambda: os._exit(1)).start()
+            return self._send(200, {"ok": True, "restarting": True})
         body = self._json_body()
         if body is None:
             return self._send(400, {"error": "malformed body"})
@@ -1103,7 +1236,17 @@ class Handler(BaseHTTPRequestHandler):
         except Exception as e:
             return self._send(500, {"error": "this Mac couldn't convert it",
                                     "detail": str(e)[:200]})
-        return self._send(200, path.read_bytes(), ctype=mime)
+        # An attachment is a file a stranger chose and sent you. Served under
+        # its own MIME type it runs in OUR origin — one texted .html and the
+        # attacker's script is inside the app, reading the whole archive
+        # through the API. So: render only what is safe to render, and hand
+        # everything else back as a download.
+        extra = {}
+        if mime.split(";")[0].strip() not in INLINE_SAFE:
+            mime = "application/octet-stream"
+            name = (row[0]["transfer_name"] or path.name).replace('"', "")
+            extra["Content-Disposition"] = f'attachment; filename="{name}"'
+        return self._send(200, path.read_bytes(), ctype=mime, extra=extra)
 
     def _transcode(self, src, rowid, ext, cmd):
         CACHE_DIR.mkdir(parents=True, exist_ok=True)
@@ -1167,7 +1310,10 @@ footer{{margin-top:20px;padding-top:10px;border-top:1px solid #d8d1c1}}
         if rel.endswith("/"):
             rel += "index.html"
         target = (APP / rel).resolve()
-        if not str(target).startswith(str(APP.resolve())) or not target.is_file():
+        # is_relative_to, not startswith: a string prefix also matches a
+        # SIBLING whose name merely begins the same way, so ../app-private
+        # would have walked straight out of the app folder.
+        if not target.is_relative_to(APP.resolve()) or not target.is_file():
             # unknown paths fall back to the app shell (deep links like /?chat=)
             target = APP / "index.html"
         mime = mimetypes.guess_type(target.name)[0] or "application/octet-stream"
@@ -1197,7 +1343,9 @@ def main():
 
     class BootErrorApi(Api):
         def health(self, sp):
-            return {"db": "error", "help": FDA_HELP.format(err="no access yet")}
+            return {"db": "error", "help": FDA_HELP.format(err="no access yet"),
+                    "csrf_token": CSRF,
+                    "consent": consent_brief("no access yet")}
 
     if archive:
         Handler.api = Api(archive, Store(STORE_DIR), config)

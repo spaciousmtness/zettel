@@ -1060,6 +1060,32 @@ body.calm #chronology { flex-basis: 76px; }
 .card p { margin: 0 0 var(--s2); }
 .card .aside { font-style: italic; color: var(--slate); }
 
+/* The consent card is the first screen a stranger sees and the one they are
+   most likely to quit on, so it gets structure rather than a wall of text.
+   A link that acts is a control, and must wear the ink box like one — the
+   ban on shadows means that border is the only thing saying "press me". */
+a.button {
+  display: inline-flex; align-items: center;
+  font: inherit; color: var(--ink); background: var(--bone);
+  border: 1.5px solid var(--ink); border-radius: 3px;
+  min-height: 44px; padding: 0 var(--s2);
+  margin-top: var(--s1); text-decoration: none;
+}
+.consent-steps {
+  margin: 0 0 var(--s3); padding-left: 1.4em;
+  display: flex; flex-direction: column; gap: var(--s3);
+}
+.consent-steps li { line-height: 1.5; }
+.consent-steps .aside { margin: var(--s1) 0 0; font-size: 0.92em; }
+/* A path is retyped wrong every time, so it is shown to be copied, not read:
+   it wraps rather than scrolls, because a truncated path is a wrong path. */
+.consent-path {
+  display: block; margin: var(--s1) 0;
+  padding: var(--s1) var(--s2);
+  background: var(--vellum); border: 1px solid var(--hairline);
+  border-radius: 3px; overflow-wrap: anywhere; user-select: all;
+}
+
 /* suffix adoption (STEP 6b): asks only — an overlay, not a ground
    replacement, so the timeline stays usable behind it */
 #adopt-card {
